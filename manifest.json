@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "앵챗추출기",
+  "version": "2.11.0",
+  "description": "채팅 전체를 .txt로 내보냅니다. 파일명 지정 + 토글 추출 선택 + 자동/수동 로딩 + ZIP 분할.",
+  "permissions": [
+    "scripting",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "앵챗추출기 패널 열기",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

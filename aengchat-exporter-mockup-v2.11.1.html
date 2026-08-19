@@ -141,7 +141,7 @@
     }
     .brand {
       display: flex;
-      align-items: center;
+      align-items: baseline;
       gap: 8px;
     }
     .brand-dot {
@@ -149,6 +149,7 @@
       height: 8px;
       border-radius: 2px;
       background: var(--ink);
+      align-self: center;
     }
     .brand-title {
       font-size: 14px;
@@ -161,7 +162,7 @@
       font-weight: 600;
       letter-spacing: 0.02em;
       color: var(--faint);
-      margin-left: -2px;
+      transform: translateY(-0.5px);
     }
     .close {
       width: 22px;
@@ -281,7 +282,6 @@
       transform: rotate(180deg);
     }
     .cselect-menu {
-      display: none;
       position: absolute;
       left: 0;
       right: 0;
@@ -294,14 +294,16 @@
       padding: 4px;
       box-sizing: border-box;
       transform-origin: top center;
-    }
-    @keyframes popIn {
-      from { opacity: 0; transform: scale(0.96) translateY(-4px); }
-      to { opacity: 1; transform: scale(1) translateY(0); }
+      opacity: 0;
+      transform: scale(0.96) translateY(-4px);
+      pointer-events: none;
+      transition: opacity 120ms ease-out, transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
     }
     .cselect-wrap.open .cselect-menu {
-      display: block;
-      animation: popIn 160ms cubic-bezier(0.23, 1, 0.32, 1);
+      opacity: 1;
+      transform: scale(1) translateY(0);
+      pointer-events: auto;
+      transition: opacity 160ms ease-out, transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
     }
     .cselect-opt {
       padding: 7px 9px;
@@ -500,6 +502,22 @@
       line-height: 1.45;
       white-space: pre-line;
       color: var(--soft);
+    }
+
+    .btn:focus-visible,
+    .cselect-btn:focus-visible,
+    input:focus-visible {
+      outline: 2px solid #A89F8C;
+      outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
     }
 
     @media (max-width: 760px) {
@@ -723,6 +741,13 @@
     };
 
     const statusEl = document.getElementById("mock_status");
+    const mockPanel = document.querySelector(".mock-panel");
+    document.querySelector(".close").onclick = () => {
+      mockPanel.style.transition = "opacity 150ms cubic-bezier(0.23, 1, 0.32, 1), transform 150ms cubic-bezier(0.23, 1, 0.32, 1)";
+      mockPanel.style.opacity = "0";
+      mockPanel.style.transform = "scale(0.97) translateY(6px)";
+      setTimeout(() => { mockPanel.style.display = "none"; }, 150);
+    };
     document.getElementById("mock_auto").onclick = () => {
       statusEl.textContent = "✓ 자동 추출 시뮬레이션 동작 중...\n• 1단계: 전체 메시지 로딩 완료\n• 2단계: 48개 블록 텍스트 추출 완료\n• 다운로드 창 생성됨.";
     };

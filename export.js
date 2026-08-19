@@ -2,6 +2,8 @@
   const ID = "__rp_panel";
   if (document.getElementById(ID)) {
     const existing = document.getElementById(ID);
+    if (existing.__rp_closeTimer) { clearTimeout(existing.__rp_closeTimer); existing.__rp_closeTimer = null; }
+    existing.classList.remove("__rp_closing");
     existing.style.display = "block";
     return;
   }
@@ -300,13 +302,15 @@
       from { opacity: 0; transform: scale(0.96) translateY(8px); }
       to { opacity: 1; transform: scale(1) translateY(0); }
     }
-    @keyframes __rp_popIn {
-      from { opacity: 0; transform: scale(0.96) translateY(-4px); }
-      to { opacity: 1; transform: scale(1) translateY(0); }
+    @keyframes __rp_fadeOut {
+      to { opacity: 0; transform: scale(0.97) translateY(6px); }
     }
     #${ID} {
       animation: __rp_fadeIn 200ms cubic-bezier(0.23, 1, 0.32, 1);
       user-select: none;
+    }
+    #${ID}.__rp_closing {
+      animation: __rp_fadeOut 150ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
     }
     #${ID} input[type=text]:focus,
     #${ID} input[type=number]:focus {
@@ -466,7 +470,6 @@
       transform: rotate(180deg) !important;
     }
     #${ID} .__rp_cselect_menu {
-      display: none;
       position: absolute;
       left: 0;
       right: 0;
@@ -479,10 +482,16 @@
       padding: 4px;
       box-sizing: border-box;
       transform-origin: top center;
+      opacity: 0;
+      transform: scale(0.96) translateY(-4px);
+      pointer-events: none;
+      transition: opacity 120ms ease-out, transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
     }
     #${ID} .__rp_cselect_wrap.open .__rp_cselect_menu {
-      display: block;
-      animation: __rp_popIn 160ms cubic-bezier(0.23, 1, 0.32, 1);
+      opacity: 1;
+      transform: scale(1) translateY(0);
+      pointer-events: auto;
+      transition: opacity 160ms ease-out, transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
     }
     #${ID} .__rp_cselect_opt {
       padding: 7px 9px;
@@ -530,6 +539,21 @@
     #${ID} #__rp_x:active {
       transform: scale(0.92);
     }
+    #${ID} .__rp_btn:focus-visible,
+    #${ID} .__rp_cselect_btn:focus-visible,
+    #${ID} input:focus-visible {
+      outline: 2px solid #A89F8C;
+      outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #${ID},
+      #${ID} *,
+      #${ID} *::before,
+      #${ID} *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
   `;
   document.documentElement.appendChild(st);
 
@@ -548,7 +572,7 @@
 
   panel.innerHTML =
     "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:13px'>" +
-    "<span style='display:flex;align-items:center;gap:8px'><span style='width:8px;height:8px;border-radius:2px;background:#44413A'></span><span style='font-size:14px;font-weight:600;letter-spacing:-.01em;color:" + INK + "'>앵챗추출기</span>" + (VER ? "<span style='font-size:10px;font-weight:600;letter-spacing:.02em;color:" + FAINT + ";margin-left:-2px'>" + VER + "</span>" : "") + "</span>" +
+    "<span style='display:flex;align-items:baseline;gap:8px'><span style='width:8px;height:8px;border-radius:2px;background:#44413A;align-self:center'></span><span style='font-size:14px;font-weight:600;letter-spacing:-.01em;color:" + INK + "'>앵챗추출기</span>" + (VER ? "<span style='font-size:10px;font-weight:600;letter-spacing:.02em;color:" + FAINT + ";transform:translateY(-0.5px)'>" + VER + "</span>" : "") + "</span>" +
     "<span id='__rp_x' title='닫기'>✕</span></div>" +
     "<div style='" + card + "'>" +
     "<div style='" + rowS + "'><span style='" + rlbl + "'>파일 이름</span><input id='__rp_name' type='text' value='" + DEFAULT_NAME + "' style='" + ctl + "'></div>" +
@@ -728,7 +752,14 @@
   spInput.oninput = syncSpeed;
   syncSpeed();
 
-  panel.querySelector("#__rp_x").onclick = () => { panel.style.display = "none"; };
+  panel.querySelector("#__rp_x").onclick = () => {
+    panel.classList.add("__rp_closing");
+    panel.__rp_closeTimer = setTimeout(() => {
+      panel.__rp_closeTimer = null;
+      panel.classList.remove("__rp_closing");
+      panel.style.display = "none";
+    }, 150);
+  };
   bStop.onclick = () => { stopFlag = true; setStatus("정지 요청…"); };
   bAuto.onclick = () => run(async () => { await preload(true); if (stopFlag) return; await sweepCapture(); saveAll(); });
   bLoad.onclick = () => run(() => preload(false));

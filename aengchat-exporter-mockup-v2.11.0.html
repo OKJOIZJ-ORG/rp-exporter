@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>앵챗추출기 화면 목업 (v2.11.0)</title>
+  <title>앵챗추출기 화면 목업</title>
   <style>
     :root {
       --ink: #44413A;
@@ -54,7 +54,7 @@
     .stage {
       display: flex;
       gap: 36px;
-      align-items: center;
+      align-items: flex-start;
       flex-wrap: wrap;
       justify-content: center;
       width: min(100%, 960px);
@@ -64,13 +64,14 @@
     .note {
       width: 340px;
       color: #EFEDE5;
-      padding: 10px 0;
+      padding-top: 18px;
     }
     .note h1 {
       margin: 0 0 10px;
       font-size: 24px;
       letter-spacing: -0.03em;
       font-weight: 700;
+      color: #FAF8F2;
     }
     .note p {
       margin: 0 0 14px;
@@ -81,23 +82,11 @@
     .note code {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       color: #F0EEE4;
-      background: rgba(255, 255, 255, 0.12);
-      padding: 2px 6px;
+      background: rgba(255, 255, 255, 0.10);
+      padding: 2.5px 7px;
       border-radius: 6px;
       font-size: 13px;
-    }
-    .note-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 10px;
-      background: rgba(240, 238, 228, 0.12);
-      border: 1px solid rgba(240, 238, 228, 0.2);
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
-      color: #FAF8F2;
-      margin-bottom: 14px;
+      letter-spacing: -0.01em;
     }
 
     /* ── 목업 패널 ── */
@@ -489,11 +478,9 @@
 <body>
   <main class="stage">
     <section class="note" aria-label="목업 설명">
-      <div class="note-badge">✨ 최신 v2.11.0 UI 적용됨</div>
       <h1>앵챗추출기 화면 목업</h1>
-      <p>크롬 확장 프로그램의 최신 UI를 독립 HTML로 완벽히 재현한 인터랙티브 목업입니다.</p>
-      <p>Cloud Dancer 팔레트의 <strong>커스텀 드롭다운 셀렉트</strong>와 <strong>Emil Kowalski 마이크로 인터랙션</strong>을 직접 클릭하여 체험할 수 있습니다.</p>
-      <p>기준 버전: <code>v2.11.0</code></p>
+      <p>크롬 확장 패널의 현재 UI를 독립 HTML로 재현한 정적 목업입니다. 실제 추출 기능은 연결하지 않았고, 화면 확인용입니다.</p>
+      <p>기준 버전: <code>v2.11.0</code> &nbsp;·&nbsp; 릴리즈 날짜: <code>2026. 08. 19</code></p>
     </section>
 
     <section class="mock-panel" aria-label="앵챗추출기 패널 목업">

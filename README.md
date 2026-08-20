@@ -1,4 +1,4 @@
-﻿# 앵챗추출기 (v2.11.1)
+# 앵챗추출기 (v2.13.0)
 
 > **RP 대화 전체 내보내기 및 백업 도구 (Chrome Extension)**  
 > Caveduck, TeapotChat, Rofan.ai, Uumm.ai 등 다양한 롤플레잉(RP) 채팅 플랫폼에서 긴 대화를 누락 없이 .txt, .md, .html, .pdf로 안전하게 내보냅니다.
@@ -23,19 +23,19 @@
 ## 🚀 설치 방법
 
 ### 간단 설치 (30초)
-1. GitHub 저장소 우측 상단의 **Code ➔ Download ZIP** (또는 릴리스/Notion 페이지의 p-exporter.zip)을 다운로드합니다.
-2. 다운로드한 p-exporter.zip의 압축을 풉니다 (p-exporter 폴더 생성).
+1. GitHub 저장소 우측 상단의 **Code ➔ Download ZIP** (또는 릴리스/Notion 페이지의 rp-exporter.zip)을 다운로드합니다.
+2. 다운로드한 rp-exporter.zip의 압축을 풉니다 (rp-exporter 폴더 생성).
 3. Chrome 주소창에 chrome://extensions 입력 후 접속합니다.
 4. 우측 상단의 **개발자 모드**를 켭니다.
-5. 좌측 상단의 **[압축해제된 확장 프로그램 로드]**를 클릭하고, 압축을 푼 p-exporter 폴더를 선택합니다.
+5. 좌측 상단의 **[압축해제된 확장 프로그램 로드]**를 클릭하고, 압축을 푼 rp-exporter 폴더를 선택합니다.
 6. Chrome 툴바의 퍼즐 아이콘에서 앵챗추출기를 **고정(📌)**하여 사용합니다.
 
 ---
 
 ## 🔄 업데이트 방법
 
-1. 새로운 최신 p-exporter.zip을 다운로드합니다.
-2. 기존 p-exporter 폴더에 압축을 덮어씁니다.
+1. 새로운 최신 rp-exporter.zip을 다운로드합니다.
+2. 기존 rp-exporter 폴더에 압축을 덮어씁니다.
 3. chrome://extensions에서 앵챗추출기 카드의 **새로고침(↻)** 버튼을 누르면 업데이트가 즉시 완료됩니다.
 
 ---

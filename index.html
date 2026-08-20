@@ -121,6 +121,7 @@
 
     /* ── 목업 패널 ── */
     .mock-panel {
+      --mock-scale: 1;
       width: 292px;
       padding: 16px;
       background: var(--panel);
@@ -131,6 +132,37 @@
       box-shadow: 0 16px 44px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(64, 58, 42, 0.08);
       user-select: none;
       position: relative;
+      transform: scale(var(--mock-scale));
+      transform-origin: bottom right;
+    }
+
+    .platform-card {
+      margin-bottom: 12px;
+      padding: 10px 11px;
+      border: 1px solid #DDD8CB;
+      border-radius: 10px;
+      background: #ECE8DD;
+    }
+    .platform-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .platform-label {
+      font-size: 11.5px;
+      color: var(--faint);
+    }
+    .platform-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .platform-mode {
+      margin-top: 2px;
+      text-align: right;
+      font-size: 10.5px;
+      color: var(--soft);
     }
 
     .header {
@@ -343,13 +375,35 @@
       color: #54514A;
       cursor: pointer;
     }
-    .check input {
-      width: 15px;
-      height: 15px;
+    .check-input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .check-box {
+      width: 16px;
+      height: 16px;
       flex: none;
-      padding: 0;
-      accent-color: var(--ink);
-      cursor: pointer;
+      border: 1px solid #AAA497;
+      border-radius: 3px;
+      background: #FBFAF6;
+      position: relative;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+    .check-input:checked + .check-box {
+      border-color: var(--ink);
+      background: var(--ink);
+    }
+    .check-input:checked + .check-box::after {
+      content: "";
+      position: absolute;
+      left: 4px;
+      top: 1px;
+      width: 5px;
+      height: 9px;
+      border: solid #FAF8F2;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
     }
 
     input[type=range] {
@@ -498,11 +552,48 @@
     }
     .status {
       margin-top: 12px;
+      padding: 10px 11px;
+      border: 1px solid #DDD8CB;
+      border-radius: 10px;
+      background: #F7F5EE;
       font-size: 11.5px;
       line-height: 1.45;
-      white-space: pre-line;
       color: var(--soft);
     }
+    .status-line:first-child {
+      color: var(--ink);
+      font-weight: 700;
+    }
+    .status-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 7px;
+    }
+    .action-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 2px 8px;
+      border: 1px solid #D4CFC2;
+      border-radius: 999px;
+      background: #ECE8DD;
+      color: #47443D;
+      font-size: 10.5px;
+      font-weight: 700;
+    }
+    .action-sep { color: var(--faint); }
+
+    .resize-handle { position: absolute; z-index: 5; }
+    .resize-handle.n { top: -6px; left: 14px; right: 14px; height: 12px; cursor: ns-resize; }
+    .resize-handle.s { bottom: -6px; left: 14px; right: 14px; height: 12px; cursor: ns-resize; }
+    .resize-handle.w { left: -6px; top: 14px; bottom: 14px; width: 12px; cursor: ew-resize; }
+    .resize-handle.e { right: -6px; top: 14px; bottom: 14px; width: 12px; cursor: ew-resize; }
+    .resize-handle.nw { left: -7px; top: -7px; width: 18px; height: 18px; cursor: nwse-resize; }
+    .resize-handle.ne { right: -7px; top: -7px; width: 18px; height: 18px; cursor: nesw-resize; }
+    .resize-handle.sw { left: -7px; bottom: -7px; width: 18px; height: 18px; cursor: nesw-resize; }
+    .resize-handle.se { right: -7px; bottom: -7px; width: 18px; height: 18px; cursor: nwse-resize; }
 
     .btn:focus-visible,
     .cselect-btn:focus-visible,
@@ -534,7 +625,7 @@
   <main class="stage">
     <section class="note" aria-label="목업 설명">
       <h1>앵챗추출기 화면 목업</h1>
-      <p class="note-desc">크롬 확장 패널의 현재 UI를 독립 HTML로 재현한 정적 목업입니다. 실제 추출 기능은 연결하지 않았고, 화면 확인용입니다.</p>
+      <p class="note-desc">크롬 확장 패널의 현재 UI를 독립 HTML로 재현한 목업입니다. 플랫폼 표시, 상태 안내, 설정 조작과 비례 크기 조절을 확인할 수 있으며 실제 추출 기능은 연결하지 않았습니다.</p>
 
       <div class="note-meta">
         <div class="meta-row">
@@ -558,6 +649,14 @@
         <span class="close" title="닫기">✕</span>
       </div>
 
+      <div class="platform-card">
+        <div class="platform-row">
+          <span class="platform-label">인식된 플랫폼</span>
+          <span class="platform-name">teapotchat.com</span>
+        </div>
+        <div class="platform-mode">안정형 상단 로딩</div>
+      </div>
+
       <div class="card">
         <div class="row">
           <span class="row-label">파일 이름</span>
@@ -571,14 +670,15 @@
           <span class="row-label">분할 기준</span>
           <div id="mock_unit_wrap" class="cselect-wrap"></div>
         </div>
-        <div class="row" id="mock_numrow">
+        <div class="row" id="mock_numrow" style="display:none">
           <span class="row-label"></span>
           <input id="mock_num" type="number" min="1" value="600000" />
           <span id="mock_suffix" class="suffix">자마다</span>
         </div>
         <label class="check">
-          <input id="mock_expand" type="checkbox" checked />
-          <span>접힌 토글까지 모두 펼쳐 추출</span>
+          <input id="mock_expand" class="check-input" type="checkbox" checked />
+          <span class="check-box" aria-hidden="true"></span>
+          <span>상태창·위젯 등 접힌 토글도 펼쳐서 추출</span>
         </label>
         <div class="speed-divider"></div>
         <div class="speed">
@@ -600,8 +700,19 @@
       </div>
       <button id="mock_stop" class="btn stop">정지</button>
 
-      <div id="mock_status" class="status">• '자동 추출'을 누르면 한 번에 끝
-• 수동은 ① 전체 로딩 후 ② 추출·저장</div>
+      <div id="mock_status" class="status">
+        <div class="status-line">준비되었습니다.</div>
+        <div class="status-line">자동 또는 수동 방식을 선택하세요.</div>
+      </div>
+
+      <span class="resize-handle n" data-dir="n"></span>
+      <span class="resize-handle s" data-dir="s"></span>
+      <span class="resize-handle w" data-dir="w"></span>
+      <span class="resize-handle e" data-dir="e"></span>
+      <span class="resize-handle nw" data-dir="nw"></span>
+      <span class="resize-handle ne" data-dir="ne"></span>
+      <span class="resize-handle sw" data-dir="sw"></span>
+      <span class="resize-handle se" data-dir="se"></span>
     </section>
   </main>
 
@@ -716,7 +827,7 @@
         { value: "chars", label: "글자 수마다" },
         { value: "count", label: "메시지 개수마다" },
       ],
-      "chars",
+      "none",
       (v) => {
         numRow.style.display = v === "none" ? "none" : "flex";
         suffix.textContent = v === "count" ? "개마다" : "자마다";
@@ -742,6 +853,32 @@
 
     const statusEl = document.getElementById("mock_status");
     const mockPanel = document.querySelector(".mock-panel");
+    function setMockStatus(message, actions = []) {
+      statusEl.replaceChildren();
+      String(message).split("\n").forEach((line) => {
+        const row = document.createElement("div");
+        row.className = "status-line";
+        row.textContent = line;
+        statusEl.appendChild(row);
+      });
+      if (actions.length) {
+        const actionRow = document.createElement("div");
+        actionRow.className = "status-actions";
+        actions.forEach((action, index) => {
+          if (index) {
+            const sep = document.createElement("span");
+            sep.className = "action-sep";
+            sep.textContent = "또는";
+            actionRow.appendChild(sep);
+          }
+          const chip = document.createElement("span");
+          chip.className = "action-chip";
+          chip.textContent = action;
+          actionRow.appendChild(chip);
+        });
+        statusEl.appendChild(actionRow);
+      }
+    }
     document.querySelector(".close").onclick = () => {
       mockPanel.style.transition = "opacity 150ms cubic-bezier(0.23, 1, 0.32, 1), transform 150ms cubic-bezier(0.23, 1, 0.32, 1)";
       mockPanel.style.opacity = "0";
@@ -749,17 +886,47 @@
       setTimeout(() => { mockPanel.style.display = "none"; }, 150);
     };
     document.getElementById("mock_auto").onclick = () => {
-      statusEl.textContent = "✓ 자동 추출 시뮬레이션 동작 중...\n• 1단계: 전체 메시지 로딩 완료\n• 2단계: 48개 블록 텍스트 추출 완료\n• 다운로드 창 생성됨.";
+      setMockStatus("자동 로딩 중입니다.\n이전 메시지를 불러오는 중입니다.", ["정지"]);
     };
     document.getElementById("mock_load").onclick = () => {
-      statusEl.textContent = "로딩 중… 12회 · 높이 14820 · 메시지 56 (안정 8/8)";
+      setMockStatus("상단에서 이전 메시지를 확인하고 있습니다.\n메시지 56개 · 변화 없음 8/8", ["정지", "② 추출·저장"]);
     };
     document.getElementById("mock_ext").onclick = () => {
-      statusEl.textContent = "✓ 저장 완료 · 56블록 · 1파일(.txt) · 약 48,200자";
+      setMockStatus("저장 완료\n대화 56개 · 1파일(.txt)\n약 48,200자");
     };
     document.getElementById("mock_stop").onclick = () => {
-      statusEl.textContent = "정지 요청… 다운로드 준비 완료";
+      setMockStatus("작업이 중단되었습니다.\n파일은 저장되지 않았습니다.", ["② 추출·저장"]);
     };
+
+    document.querySelectorAll(".resize-handle").forEach((handle) => {
+      handle.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        handle.setPointerCapture(event.pointerId);
+        const dir = handle.dataset.dir;
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const startScale = parseFloat(getComputedStyle(mockPanel).getPropertyValue("--mock-scale")) || 1;
+        const baseWidth = mockPanel.offsetWidth;
+        const baseHeight = mockPanel.offsetHeight;
+        const move = (moveEvent) => {
+          const dx = moveEvent.clientX - startX;
+          const dy = moveEvent.clientY - startY;
+          const sx = dir.includes("w") ? -dx / baseWidth : dir.includes("e") ? dx / baseWidth : 0;
+          const sy = dir.includes("n") ? -dy / baseHeight : dir.includes("s") ? dy / baseHeight : 0;
+          const delta = sx && sy ? (sx + sy) / 2 : sx || sy;
+          const next = Math.min(1.1, Math.max(0.58, startScale + delta));
+          mockPanel.style.setProperty("--mock-scale", next.toFixed(3));
+        };
+        const end = () => {
+          handle.removeEventListener("pointermove", move);
+          handle.removeEventListener("pointerup", end);
+          handle.removeEventListener("pointercancel", end);
+        };
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("pointerup", end);
+        handle.addEventListener("pointercancel", end);
+      });
+    });
   </script>
 </body>
 </html>

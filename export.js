@@ -14,7 +14,7 @@
   const OSC = 2;           // 한 사이클당 진동 횟수
   let SPEED_MULT = 1;      // 추출 속도 배수(작을수록 빠름) · 슬라이더로 실시간 조절
   const DEFAULT_NAME = "rp_chat";
-  const VER = (() => { try { return "v" + chrome.runtime.getManifest().version; } catch (e) { return "v2.14.0"; } })();
+  const VER = (() => { try { return "v" + chrome.runtime.getManifest().version; } catch (e) { return "v2.14.1"; } })();
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const raf = () => new Promise((r) => requestAnimationFrame(r));
@@ -71,36 +71,34 @@
     }
   }
 
-  // ── 스크롤러 & 리스트 탐색 엔진 ──
+  // ── 사이드바 / 드로어 / 메타 태그 판별 (상태창 트랩 원천 차단) ──
+  function isSidebarOrWidget(el) {
+    if (!el) return true;
+    if (el.matches("aside, nav, header, footer, script, style, noscript, svg, iframe")) return true;
+    if (el.closest("aside, [role='complementary'], nav, header, footer, [class*='sidebar'], [class*='drawer'], [id*='sidebar']")) return true;
+    return false;
+  }
+
+  // ── 턴 점수 계산 ──
   function scoreOf(el) {
+    if (isSidebarOrWidget(el)) return 0;
     let n = 0;
     for (const c of el.children) {
       if (c.getAttribute("aria-hidden") === "true" || c.id === ID || c.closest("#" + ID)) continue;
       if (c.matches("script, style, noscript, svg, iframe")) continue;
-      if (c.querySelector("details, [data-turn-key], [data-message-id]") ||
-          c.matches("[data-turn-key], [data-message-id], details, [class*='message'], [class*='turn']") ||
-          (c.innerText || "").trim().length > 30) {
+      if (c.matches("[data-turn-key], [data-message-id], [class*='message'], [class*='turn'], [class*='bubble'], [class*='chat-item'], [class*='chat-message']")) {
+        n += 3;
+      } else if ((c.innerText || "").trim().length > 30) {
         n++;
       }
     }
     return n;
   }
 
-  function findList(root) {
-    if (!root) return document.body;
-    let best = root, score = scoreOf(root);
-    root.querySelectorAll("*").forEach((el) => {
-      if (el.id === ID || el.closest("#" + ID)) return;
-      if (el.matches("script, style, noscript, svg, iframe")) return;
-      const sc = scoreOf(el);
-      if (sc > score) { score = sc; best = el; }
-    });
-    return best;
-  }
-
+  // ── 스크롤러 탐색 ──
   function findScroller() {
-    // 1순위: 티팟 등 고유 뷰어
-    const explicit = document.querySelector("[data-capture-selectable], .chat-viewer-scrollbar-autohide");
+    // 1순위: 명시적 메인 채팅 뷰어
+    const explicit = document.querySelector("[data-capture-selectable], .chat-viewer-scrollbar-autohide, main [class*='overflow-y-auto'], main");
     if (explicit) {
       const s = getComputedStyle(explicit);
       if (/(auto|scroll)/.test(s.overflowY) && explicit.scrollHeight > explicit.clientHeight + 40) {
@@ -108,18 +106,18 @@
       }
     }
 
-    // 2순위: 턴/메시지 점수가 높은 스크롤 컨테이너
+    // 2순위: 사이드바 제외, 스크롤 가능 컨테이너 중 턴 점수 최상위
     const all = [...document.querySelectorAll("*")].filter((el) => {
       if (el.id === ID || el.closest("#" + ID)) return false;
+      if (isSidebarOrWidget(el)) return false;
       const s = getComputedStyle(el);
-      return /(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 60;
+      return /(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 40;
     });
 
     if (all.length > 0) {
       return all.sort((a, b) => scoreOf(b) - scoreOf(a) || b.scrollHeight - a.scrollHeight)[0];
     }
 
-    // 3순위: flex-col-reverse
     const rev = all.find((el) => {
       const fd = getComputedStyle(el).flexDirection;
       return fd === "column-reverse" || /flex-col-reverse/.test(el.className || "");
@@ -127,6 +125,29 @@
     if (rev) return rev;
 
     return document.scrollingElement || document.documentElement;
+  }
+
+  // ── 메시지 리스트 컨테이너 탐색 (단일 턴 내부 위젯 리스트로의 오탐색 방지) ──
+  function findList(scroller) {
+    if (!scroller) return document.body;
+    const turnKey = scroller.querySelector("[data-turn-key]");
+    if (turnKey && turnKey.parentElement) {
+      return turnKey.parentElement;
+    }
+
+    let best = scroller;
+    let bestScore = scoreOf(scroller);
+
+    const candidates = [...scroller.querySelectorAll("div, main, section, ul")].filter(el => !isSidebarOrWidget(el));
+    for (const el of candidates) {
+      if (el.closest("[class*='turn'], [class*='message'], [data-turn-key]")) continue;
+      const sc = scoreOf(el);
+      if (sc > bestScore) {
+        bestScore = sc;
+        best = el;
+      }
+    }
+    return best;
   }
 
   let scroller = findScroller();
@@ -137,7 +158,7 @@
 
   // ── 무손실 턴 텍스트 추출 (innerText + DOM Tree Fallback) ──
   function extractTurnText(el) {
-    if (!el || el.matches("script, style, noscript, svg, iframe")) return "";
+    if (!el || isSidebarOrWidget(el)) return "";
 
     if (el.style && el.style.contentVisibility) {
       el.style.setProperty("content-visibility", "visible", "important");
@@ -166,7 +187,7 @@
       const blocks = el.querySelectorAll("p, [class*='prose'], [class*='bubble'], [class*='message'], [class*='content'], pre, blockquote, div, span");
       if (blocks.length > 0) {
         for (const b of blocks) {
-          if (b.matches("script, style, noscript, svg, iframe")) continue;
+          if (isSidebarOrWidget(b)) continue;
           if (b.children.length === 0 && (b.textContent || "").trim().length > 0) {
             const raw = cleanText(b.textContent);
             if (raw && !parts.includes(raw)) parts.push(raw);
@@ -190,7 +211,7 @@
   function captureElements(elements) {
     for (const el of elements) {
       if (!el || el.getAttribute("aria-hidden") === "true" || el.id === ID || el.closest("#" + ID)) continue;
-      if (el.matches("script, style, noscript, svg, iframe")) continue;
+      if (isSidebarOrWidget(el)) continue;
       const t = extractTurnText(el);
       if (t.length < 2) continue;
       const k = hash(t);
@@ -207,7 +228,7 @@
     try { document.querySelectorAll("details").forEach((d) => (d.open = open)); } catch (e) {}
 
     // 1. TeapotChat: data-turn-key
-    const turnKeys = [...scroller.querySelectorAll("[data-turn-key]")].filter((el) => !el.closest("#" + ID));
+    const turnKeys = [...scroller.querySelectorAll("[data-turn-key]")].filter((el) => !isSidebarOrWidget(el));
     if (turnKeys.length > 0) {
       captureElements(turnKeys);
       return;
@@ -216,18 +237,19 @@
     // 2. Caveduck 및 기타: list.children
     const list = findList(scroller);
     if (list && list.children.length > 0) {
-      captureElements([...list.children]);
+      captureElements([...list.children].filter(c => !isSidebarOrWidget(c)));
     }
   }
 
   // ── 대화 상태 시그니처 ──
   function getChatSignature() {
     ensureScroller();
+    const turnKeys = [...scroller.querySelectorAll("[data-turn-key]")].filter(el => !isSidebarOrWidget(el));
     const list = findList(scroller);
-    const turnKeys = scroller.querySelectorAll("[data-turn-key]");
-    const count = turnKeys.length > 0 ? turnKeys.length : (list ? list.children.length : 0);
+    const validChildren = list ? [...list.children].filter(c => !isSidebarOrWidget(c)) : [];
+    const count = turnKeys.length > 0 ? turnKeys.length : validChildren.length;
     const sh = Math.round(scroller.scrollHeight || 0);
-    const f = list && list.firstElementChild ? (list.firstElementChild.innerText || "").slice(0, 40) : "";
+    const f = validChildren.length > 0 ? (validChildren[0].innerText || "").slice(0, 40) : "";
     return {
       count,
       sh,
@@ -344,7 +366,7 @@
 
     // 시작 메시지(Intro / Start Setting)가 상단 별도 블록에 있는 경우 선행 수집
     const introEl = scroller.querySelector(".pt-4, [class*='start-message'], [data-start-message]");
-    if (introEl && !introEl.matches("[data-turn-key]") && !introEl.querySelector("[data-turn-key]")) {
+    if (introEl && !introEl.matches("[data-turn-key]") && !introEl.querySelector("[data-turn-key]") && !isSidebarOrWidget(introEl)) {
       const introText = cleanText(introEl.innerText || introEl.textContent || "");
       if (introText.length > 5) {
         seen.add(hash(introText));

@@ -1,4 +1,4 @@
-﻿# 앵챗추출기 (v2.14.0)
+﻿# 앵챗추출기 (v2.14.1)
 
 > **RP 대화 전체 내보내기 및 백업 도구 (Chrome Extension)**  
 > Caveduck, TeapotChat, Rofan.ai, Uumm.ai 등 다양한 롤플레잉(RP) 채팅 플랫폼에서 긴 대화를 누락 없이 .txt, .md, .html, .pdf로 안전하게 내보냅니다.

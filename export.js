@@ -8,267 +8,79 @@
     return;
   }
 
-  // ══ 자동 모드 설정 (모든 RP 플랫폼 통합 최적화) ══
-  const AUTO_STABLE = 8;   // 높이/메시지가 이 횟수 연속 불변이어야 최상단 판정
-  const DWELL = 700;       // 상단 고정 후 네트워크/DB 로딩 대기 기본시간(ms)
+  // ══ 자동 모드 설정 (키우면 더 보수적) ══
+  const AUTO_STABLE = 8;   // 높이/메시지가 이 횟수 연속 안 늘어야 “최상단” 판정
+  const DWELL = 700;       // 끝에 핀 후 로딩 대기(ms)
   const OSC = 2;           // 한 사이클당 진동 횟수
   let SPEED_MULT = 1;      // 추출 속도 배수(작을수록 빠름) · 슬라이더로 실시간 조절
   const DEFAULT_NAME = "rp_chat";
-  const VER = (() => { try { return "v" + chrome.runtime.getManifest().version; } catch (e) { return "v2.14.2"; } })();
+  const VER = (() => { try { return "v" + chrome.runtime.getManifest().version; } catch (e) { return ""; } })();
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const raf = () => new Promise((r) => requestAnimationFrame(r));
   const NBSP = String.fromCharCode(160);
   const SEP = "\n\n────────────────────────\n\n";
 
-  // ── 텍스트 정규화 ──
-  function cleanText(t) {
-    if (!t) return "";
-    return t
-      .split(NBSP).join(" ")
-      .replace(/[\u200B-\u200D\uFEFF]/g, "") // 제로 위드 스페이스 제거
-      .replace(/\r\n/g, "\n")
-      .replace(/\r/g, "\n")
-      .replace(/\n{4,}/g, "\n\n\n")
-      .trim();
-  }
-
-  // ── 가상 스크롤(content-visibility: auto) 강제 렌더링 오버라이드 ──
-  let forceRenderStyle = null;
-  function enableForceRender() {
-    if (!forceRenderStyle || !document.contains(forceRenderStyle)) {
-      forceRenderStyle = document.createElement("style");
-      forceRenderStyle.id = "__rp_force_render";
-      forceRenderStyle.textContent = `
-        [data-turn-key], [data-message-id], details, .chat-viewer-scrollbar-autohide,
-        .chat-viewer-scrollbar-autohide *, [data-capture-selectable], [data-capture-selectable] *,
-        main, main *, [role='log'], [role='log'] * {
-          content-visibility: visible !important;
-          contain-intrinsic-size: auto none !important;
-          contain: none !important;
-          overflow-anchor: auto !important;
-        }
-      `;
-      document.documentElement.appendChild(forceRenderStyle);
-    }
-
-    try {
-      const candidates = document.querySelectorAll("[data-turn-key], [data-message-id], [class*='message'], [class*='turn']");
-      candidates.forEach((el) => {
-        if (el.style) {
-          el.style.setProperty("content-visibility", "visible", "important");
-          el.style.setProperty("contain-intrinsic-size", "none", "important");
-          el.style.setProperty("contain", "none", "important");
-        }
-      });
-    } catch (e) {}
-  }
-
-  function disableForceRender() {
-    if (forceRenderStyle && document.contains(forceRenderStyle)) {
-      forceRenderStyle.remove();
-      forceRenderStyle = null;
-    }
-  }
-
-  // ── 사이드바 / 비대화 메타 태그 제외 판별 ──
-  function isExcluded(el) {
-    if (!el) return true;
-    if (el.matches("aside, nav, header, footer, script, style, noscript, svg, iframe")) return true;
-    if (el.closest("aside, [role='complementary'], nav, header, footer, [id*='sidebar']")) return true;
-    return false;
-  }
-
-  // ── 턴 점수 계산 ──
-  function scoreOf(el) {
-    if (isExcluded(el)) return 0;
-    let n = 0;
-    for (const c of el.children) {
-      if (c.getAttribute("aria-hidden") === "true" || c.id === ID || c.closest("#" + ID)) continue;
-      if (c.matches("script, style, noscript, svg, iframe")) continue;
-      if (c.matches("[data-turn-key], [data-message-id], [class*='turn'], [class*='message'], [class*='bubble'], [class*='chat-item'], [class*='card']")) {
-        n += 3;
-      } else if ((c.innerText || "").trim().length > 25) {
-        n++;
-      }
-    }
-    return n;
-  }
-
-  // ── 스크롤러 탐색 ──
+  // ── 스크롤러 / 리스트 ──
   function findScroller() {
-    // 1순위: 티팟 등 고유 뷰어 및 메인 채팅 스크롤러
-    const explicit = document.querySelector("[data-capture-selectable], .chat-viewer-scrollbar-autohide, main [class*='overflow-y-auto'], main");
-    if (explicit) {
-      const s = getComputedStyle(explicit);
-      if (/(auto|scroll)/.test(s.overflowY) && explicit.scrollHeight > explicit.clientHeight + 20) {
-        return explicit;
-      }
-    }
-
-    // 2순위: 사이드바 제외, 스크롤 가능 컨테이너 중 턴 점수 최상위
     const all = [...document.querySelectorAll("*")].filter((el) => {
-      if (el.id === ID || el.closest("#" + ID)) return false;
-      if (isExcluded(el)) return false;
       const s = getComputedStyle(el);
-      return /(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 20;
+      return /(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 200;
     });
-
-    if (all.length > 0) {
-      return all.sort((a, b) => scoreOf(b) - scoreOf(a) || b.scrollHeight - a.scrollHeight)[0];
-    }
-
     const rev = all.find((el) => {
       const fd = getComputedStyle(el).flexDirection;
       return fd === "column-reverse" || /flex-col-reverse/.test(el.className || "");
     });
     if (rev) return rev;
-
-    return document.scrollingElement || document.documentElement;
+    return all.sort((a, b) => b.scrollHeight - a.scrollHeight)[0] || document.scrollingElement;
   }
-
-  // ── 메시지 리스트 컨테이너 탐색 (단일 턴 내부 위젯 리스트로의 오탐색 방지) ──
-  function findList(scroller) {
-    if (!scroller) return document.body;
-    const turnKey = scroller.querySelector("[data-turn-key]");
-    if (turnKey && turnKey.parentElement) {
-      return turnKey.parentElement;
+  function scoreOf(el) {
+    let n = 0;
+    for (const c of el.children) {
+      if (c.querySelector("details") || (c.innerText || "").trim().length > 50) n++;
     }
-
-    let best = scroller;
-    let bestScore = scoreOf(scroller);
-
-    const candidates = [...scroller.querySelectorAll("div, main, section, ul")].filter(el => !isExcluded(el));
-    for (const el of candidates) {
-      if (el.closest("[class*='turn'], [class*='message'], [data-turn-key]")) continue;
-      const sc = scoreOf(el);
-      if (sc > bestScore) {
-        bestScore = sc;
-        best = el;
-      }
-    }
+    return n;
+  }
+  function findList(root) {
+    let best = root, score = scoreOf(root);
+    root.querySelectorAll("*").forEach((el) => { const sc = scoreOf(el); if (sc > score) { score = sc; best = el; } });
     return best;
   }
-
   let scroller = findScroller();
   function ensureScroller() {
     if (!scroller || !document.contains(scroller)) scroller = findScroller();
     return scroller;
   }
 
-  // ── 무손실 턴 텍스트 추출 (innerText + DOM Tree Fallback) ──
-  function extractTurnText(el) {
-    if (!el || isExcluded(el)) return "";
-
-    if (el.style && el.style.contentVisibility) {
-      el.style.setProperty("content-visibility", "visible", "important");
-      el.style.setProperty("contain-intrinsic-size", "none", "important");
-    }
-
-    if (expandChk && expandChk.checked) {
-      try {
-        if (el.tagName === "DETAILS") el.open = true;
-        el.querySelectorAll("details").forEach((d) => (d.open = true));
-      } catch (e) {}
-    }
-
-    // 1차 시도: innerText
-    let t = cleanText(el.innerText || "");
-    if (t.length >= 2) return t;
-
-    // 2차 시도: 강제 reflow 후 innerText
-    try { void el.offsetHeight; } catch (e) {}
-    t = cleanText(el.innerText || "");
-    if (t.length >= 2) return t;
-
-    // 3차 시도: 하위 블록/텍스트 노드 구조적 순회
-    try {
-      const parts = [];
-      const blocks = el.querySelectorAll("p, [class*='prose'], [class*='bubble'], [class*='message'], [class*='content'], pre, blockquote, div, span");
-      if (blocks.length > 0) {
-        for (const b of blocks) {
-          if (isExcluded(b)) continue;
-          if (b.children.length === 0 && (b.textContent || "").trim().length > 0) {
-            const raw = cleanText(b.textContent);
-            if (raw && !parts.includes(raw)) parts.push(raw);
-          }
-        }
-      }
-      if (parts.length > 0) return parts.join("\n").trim();
-    } catch (e) {}
-
-    return cleanText(el.textContent || "");
-  }
-
-  // ── 캡처 및 중복 제거 ──
+  // ── 캡처 ──
   let seen = new Set(), blocks = [];
-  function hash(s) {
-    let h = 0;
-    for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
-    return h + ":" + s.length;
-  }
-
-  function captureElements(elements) {
-    for (const el of elements) {
-      if (!el || el.getAttribute("aria-hidden") === "true" || el.id === ID || el.closest("#" + ID)) continue;
-      if (isExcluded(el)) continue;
-      const t = extractTurnText(el);
-      if (t.length < 2) continue;
-      const k = hash(t);
-      if (!seen.has(k)) {
-        seen.add(k);
-        blocks.push(t);
-      }
-    }
-  }
-
+  function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0; return h + ":" + s.length; }
+  const stripNbsp = (t) => t.split(NBSP).join(" ");
   function captureVisible() {
     ensureScroller();
     const open = expandChk.checked;
-    try { document.querySelectorAll("details").forEach((d) => (d.open = open)); } catch (e) {}
-
-    // 1. TeapotChat: data-turn-key
-    const turnKeys = [...scroller.querySelectorAll("[data-turn-key]")].filter((el) => !isExcluded(el));
-    if (turnKeys.length > 0) {
-      captureElements(turnKeys);
-      return;
-    }
-
-    // 2. Caveduck 및 기타: list.children
+    try { document.querySelectorAll("details").forEach((d) => (d.open = open)); } catch (e) {} // 체크면 펼쳐서 본문 포함, 해제면 접어서 요약만
     const list = findList(scroller);
-    if (list && list.children.length > 0) {
-      captureElements([...list.children].filter(c => !isExcluded(c)));
+    if (!list) return;
+    for (const c of list.children) {
+      let t = "";
+      try { t = stripNbsp(c.innerText || "").trim(); } catch (e) { continue; }
+      if (t.length < 2) continue;
+      const k = hash(t);
+      if (!seen.has(k)) { seen.add(k); blocks.push(t); }
     }
-  }
-
-  // ── 대화 상태 시그니처 ──
-  function getChatSignature() {
-    ensureScroller();
-    const turnKeys = [...scroller.querySelectorAll("[data-turn-key]")].filter(el => !isExcluded(el));
-    const list = findList(scroller);
-    const validChildren = list ? [...list.children].filter(c => !isExcluded(c)) : [];
-    const count = turnKeys.length > 0 ? turnKeys.length : validChildren.length;
-    const sh = Math.round(scroller.scrollHeight || 0);
-    const f = validChildren.length > 0 ? (validChildren[0].innerText || "").slice(0, 40) : "";
-    return {
-      count,
-      sh,
-      f,
-      key: count + "|" + sh + "|" + f,
-    };
   }
 
   // ── 적응형 대기 ──
   async function settle(maxMs) {
     const cap = Math.round(maxMs * SPEED_MULT);
-    const t0 = performance.now();
-    let lastLen = -1, stable = 0;
+    const t0 = performance.now(); let lastLen = -1, stable = 0;
     while (performance.now() - t0 < cap) {
       await raf();
       if (stopFlag) break;
       ensureScroller();
       let len = 0;
-      try { len = (scroller.innerText || scroller.textContent || "").length; } catch (e) { break; }
+      try { len = scroller.innerText.length; } catch (e) { break; }
       if (len === lastLen) stable++; else stable = 0;
       lastLen = len;
       if (stable >= 2) break;
@@ -277,133 +89,63 @@
 
   let busy = false, stopFlag = false;
 
-  // ── 상단 고정 및 부드러운 진동 (이전 대화 로더 활성화) ──
+  // ── 강한 진동: 끝 → 뷰포트 한 칸 아래 → 다시 끝 (OSC회 반복) ──
   async function oscillate() {
     ensureScroller();
     const ch = scroller.clientHeight || 500;
-    const jump = Math.max(Math.round(ch * 0.5), 200);
-
     for (let k = 0; k < OSC; k++) {
-      scroller.scrollTop = 0;
-      try {
-        scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
-        scroller.dispatchEvent(new Event("wheel", { bubbles: true }));
-      } catch (e) {}
-      await sleep(Math.round(DWELL * SPEED_MULT * 0.6));
+      scroller.scrollTop = -1e9;            // 가장 오래된 쪽 극단
+      await sleep(Math.round(DWELL * SPEED_MULT));
       if (stopFlag) return;
-
-      // 살짝 아래로 스크롤하여 탑 로더 / IntersectionObserver 재진입 유도
-      scroller.scrollTop = jump;
-      try {
-        scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
-      } catch (e) {}
-      await sleep(Math.round(200 * SPEED_MULT));
-
-      scroller.scrollTop = 0;
-      try {
-        scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
-      } catch (e) {}
-      await sleep(Math.round(DWELL * SPEED_MULT * 0.4));
+      scroller.scrollTop = scroller.scrollTop + ch; // 한 칸 아래로 크게
+      await sleep(Math.round(220 * SPEED_MULT));
     }
+    scroller.scrollTop = -1e9;
+    await sleep(Math.round(260 * SPEED_MULT));
   }
 
   // ── ①/▶ 전체 로딩 (auto=false: ■ 정지까지 / auto=true: 자동 판정 종료) ──
   async function preload(auto) {
-    enableForceRender();
-    let i = 0;
-    const MAX = 50000;
-    let lastKey = "", stable = 0;
-
+    let i = 0; const MAX = 50000;
+    let last = "", stable = 0;
     while (!stopFlag && i < MAX) {
       i++;
       await oscillate();
       if (stopFlag) break;
-
-      // 네트워크/DB 지연 응답 대기 및 데이터 증가 관측
-      const pollStart = performance.now();
-      let prevSig = getChatSignature();
-
-      while (performance.now() - pollStart < Math.round(1100 * SPEED_MULT)) {
-        await sleep(150);
-        if (stopFlag) break;
-        const curSig = getChatSignature();
-        if (curSig.count > prevSig.count || curSig.sh > prevSig.sh + 30) {
-          prevSig = curSig;
-          stable = 0; // 새 데이터 감지 즉시 카운트 리셋
-        }
-      }
-
-      const sig = getChatSignature();
+      const sh = Math.round(scroller.scrollHeight);
+      const d = document.querySelectorAll("details").length;
+      const list = findList(scroller);
+      const f = list.firstElementChild;
+      const m = sh + "|" + d + "|" + (f ? f.innerText.slice(0, 60) : "");
       if (auto) {
-        if (sig.key === lastKey) {
-          stable++;
-        } else {
-          stable = 0;
-          lastKey = sig.key;
-        }
-        setStatus("자동 로딩… " + i + "회 · " + sig.count + "개 턴 감지 (완료 판정 " + stable + "/" + AUTO_STABLE + ")");
+        if (m === last) stable++; else { stable = 0; last = m; }
+        setStatus("자동 로딩… " + i + "회 · 높이 " + sh + " · 메시지 " + d + " (안정 " + stable + "/" + AUTO_STABLE + ")");
         if (stable >= AUTO_STABLE) break;
       } else {
-        setStatus("로딩 중… " + i + "회 · " + sig.count + "개 턴 감지 (충분하면 ■ 정지)");
+        setStatus("로딩 중… " + i + "회 · 높이 " + sh + " · 메시지 " + d + "  (충분하면 ■ 정지)");
       }
     }
-
-    if (!auto) {
-      const finalSig = getChatSignature();
-      setStatus("로딩 정지 · " + finalSig.count + "개 턴 감지됨. ②로 추출하세요.");
-    }
+    if (!auto) setStatus("로딩 정지 · 메시지 " + document.querySelectorAll("details").length + ". ②로 추출하세요.");
   }
 
-  // ── 전 턴 무손실 스윗 캡처 (상단부터 하단까지 순차 수집) ──
+  // ── 수집 스윗 ──
   async function sweepCapture() {
-    enableForceRender();
-    ensureScroller();
-    seen = new Set();
-    blocks = [];
-
-    // 시작 메시지(Intro / Start Setting)가 상단 별도 블록에 있는 경우 선행 수집
-    const introEl = scroller.querySelector(".pt-4, [class*='start-message'], [data-start-message]");
-    if (introEl && !introEl.matches("[data-turn-key]") && !introEl.querySelector("[data-turn-key]") && !isExcluded(introEl)) {
-      const introText = cleanText(introEl.innerText || introEl.textContent || "");
-      if (introText.length > 5) {
-        seen.add(hash(introText));
-        blocks.push(introText);
-      }
-    }
-
-    const ch = scroller.clientHeight || 500;
-    const step = Math.max(Math.round(ch * 0.6), 250);
-
-    // 최상단으로 이동 후 수집 시작
-    scroller.scrollTop = 0;
-    await settle(150);
-    captureVisible();
-
-    let lastScrollTop = -1;
+    scroller = findScroller();
+    scroller.scrollTop = -1e9; await sleep(120); const a1 = scroller.scrollTop;
+    scroller.scrollTop = 1e9; await sleep(120); const a2 = scroller.scrollTop;
+    const min = Math.min(a1, a2), max = Math.max(a1, a2);
+    const ch = scroller.clientHeight || 500; const step = Math.max(ch * 0.8, 300);
+    seen = new Set(); blocks = [];
+    let pos = min; scroller.scrollTop = min; await settle(350); captureVisible();
     let s = 0;
-    while (s < 10000 && !stopFlag) {
-      s++;
-      scroller.scrollTop += step;
-      try { scroller.dispatchEvent(new Event("scroll", { bubbles: true })); } catch (e) {}
-      await sleep(Math.round(100 * SPEED_MULT));
-      captureVisible();
-
-      const cur = scroller.scrollTop;
-      const maxScroll = Math.max(scroller.scrollHeight - scroller.clientHeight, 0);
-      const pct = maxScroll > 0 ? Math.min(Math.round((cur / maxScroll) * 100), 100) : 100;
-      setStatus("무손실 검증 수집 " + pct + "% · " + blocks.length + "개 턴 확보");
-
-      if (cur === lastScrollTop || cur >= maxScroll) break;
-      lastScrollTop = cur;
+    while (pos < max - 2 && s < 8000 && !stopFlag) {
+      s++; pos = Math.min(pos + step, max); scroller.scrollTop = pos; await settle(350); captureVisible();
+      const pct = Math.round(((pos - min) / ((max - min) || 1)) * 100);
+      setStatus("수집 " + pct + "% · " + blocks.length + "블록");
     }
-
-    // 최하단 최종 캡처
-    scroller.scrollTop = scroller.scrollHeight;
-    await settle(150);
-    captureVisible();
-
-    disableForceRender();
-    setStatus("수집 완료 · " + blocks.length + "개 턴 추출됨. 저장 중…");
+    scroller.scrollTop = max; await settle(350); captureVisible();
+    scroller.scrollTop = 0;
+    setStatus("수집 완료 · " + blocks.length + "블록. 저장 중…");
   }
 
   // ── ZIP(무압축 store) 생성 ──
@@ -517,7 +259,7 @@
     const chars = blocks.reduce((s, b) => s + b.length, 0);
     if (fmt === "pdf") {
       printPdf(groups, base);
-      setStatus("✓ 인쇄 창 열림 · 대상에서 'PDF로 저장' 선택 · " + blocks.length + "개 턴" + (groups.length > 1 ? " · " + groups.length + "구간(페이지 분리)" : ""));
+      setStatus("✓ 인쇄 창 열림 · 대상에서 'PDF로 저장' 선택 · " + blocks.length + "블록" + (groups.length > 1 ? " · " + groups.length + "구간(페이지 분리)" : ""));
       nameInput.value = DEFAULT_NAME;
       return;
     }
@@ -526,7 +268,7 @@
     const make = (g) => fmt === "html" ? htmlDoc(g.join(SEP), base) : g.join(SEP);
     if (groups.length === 1) {
       dlBlob(base + "." + ext, new Blob([make(groups[0])], { type: mime }));
-      setStatus("✓ 저장 완료 · " + blocks.length + "개 턴 · 1파일(." + ext + ") · 약 " + chars.toLocaleString() + "자");
+      setStatus("✓ 저장 완료 · " + blocks.length + "블록 · 1파일(." + ext + ") · 약 " + chars.toLocaleString() + "자");
     } else {
       const enc = new TextEncoder();
       const files = groups.map((g, i) => ({
@@ -535,25 +277,17 @@
       }));
       const zip = makeZip(files);
       dlBlob(base + ".zip", new Blob([zip], { type: "application/zip" }));
-      setStatus("✓ 저장 완료 · " + blocks.length + "개 턴 · " + groups.length + "파일(ZIP·." + ext + ") · 약 " + chars.toLocaleString() + "자");
+      setStatus("✓ 저장 완료 · " + blocks.length + "블록 · " + groups.length + "파일(ZIP·." + ext + ") · 약 " + chars.toLocaleString() + "자");
     }
-    nameInput.value = DEFAULT_NAME;
+    nameInput.value = DEFAULT_NAME; // 다운로드 시작 후 파일명 리셋
   }
 
   // ── 실행 가드 ──
   async function run(fn) {
     if (busy) return;
     busy = true; stopFlag = false; setButtons(true);
-    try {
-      await fn();
-    } catch (e) {
-      setStatus("⚠ 오류: " + ((e && e.message) || String(e)));
-      console.error("[앵챗추출기]", e);
-    } finally {
-      disableForceRender();
-      busy = false;
-      setButtons(false);
-    }
+    try { await fn(); } catch (e) { setStatus("⚠ 오류: " + ((e && e.message) || String(e))); console.error("[앵챗추출기]", e); }
+    busy = false; setButtons(false);
   }
 
   // ── 패널 UI (Cloud Dancer 톤 & Emil Kowalski 인터랙션 가이드) ──
@@ -561,6 +295,7 @@
   const INK = "#44413A", LABEL = "#A8A395", SOFT = "#6E695D", FAINT = "#BCB6A6", LINE = "#E0DCD0";
   const field = "display:block;width:100%;box-sizing:border-box;padding:8px 11px;background:#FAF9F4;color:" + INK + ";border:1px solid #D7D2C6;border-radius:10px;outline:none;font:500 13px/1.3 " + FONT + ";transition:border-color 140ms ease-out,box-shadow 140ms ease-out;";
 
+  // 호스트 페이지 간섭 방지 및 고품질 애니메이션 스타일시트
   const st = document.createElement("style");
   st.textContent = `
     @keyframes __rp_fadeIn {
@@ -570,19 +305,19 @@
     @keyframes __rp_fadeOut {
       to { opacity: 0; transform: scale(0.97) translateY(6px); }
     }
-    #__rp_panel {
+    #${ID} {
       animation: __rp_fadeIn 200ms cubic-bezier(0.23, 1, 0.32, 1);
       user-select: none;
     }
-    #__rp_panel.__rp_closing {
+    #${ID}.__rp_closing {
       animation: __rp_fadeOut 150ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
     }
-    #__rp_panel input[type=text]:focus,
-    #__rp_panel input[type=number]:focus {
+    #${ID} input[type=text]:focus,
+    #${ID} input[type=number]:focus {
       border-color: #A89F8C !important;
       box-shadow: 0 0 0 3px rgba(122, 112, 92, 0.14) !important;
     }
-    #__rp_panel .__rp_btn {
+    #${ID} .__rp_btn {
       display: block !important;
       width: 100% !important;
       margin: 0 0 8px 0 !important;
@@ -596,53 +331,53 @@
       box-sizing: border-box !important;
       transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1), background 140ms ease-out, box-shadow 140ms ease-out, opacity 140ms ease-out !important;
     }
-    #__rp_panel .__rp_btn:active {
+    #${ID} .__rp_btn:active {
       transform: scale(0.975) !important;
     }
-    #__rp_panel .__rp_auto {
+    #${ID} .__rp_auto {
       border: 1px solid #38352D !important;
       background: #44413A !important;
       color: #FAF8F2 !important;
       font-weight: 700 !important;
       box-shadow: 0 1px 3px rgba(64, 58, 42, 0.18) !important;
     }
-    #__rp_panel .__rp_auto:hover {
+    #${ID} .__rp_auto:hover {
       background: #4E4B42 !important;
       box-shadow: 0 2px 5px rgba(64, 58, 42, 0.22) !important;
     }
-    #__rp_panel .__rp_sec {
+    #${ID} .__rp_sec {
       border: 1px solid #CBC5B7 !important;
       background: #E8E4D9 !important;
       color: #3A3830 !important;
       box-shadow: 0 1px 2px rgba(64, 58, 42, 0.05) !important;
     }
-    #__rp_panel .__rp_sec:hover {
+    #${ID} .__rp_sec:hover {
       background: #DFDACD !important;
       box-shadow: 0 2px 4px rgba(64, 58, 42, 0.08) !important;
     }
-    #__rp_panel .__rp_stop {
+    #${ID} .__rp_stop {
       border: 1px solid #DFCBC0 !important;
       background: #F1E7E1 !important;
       color: #A0473A !important;
       box-shadow: 0 1px 2px rgba(120, 70, 55, 0.05) !important;
     }
-    #__rp_panel .__rp_stop:hover {
+    #${ID} .__rp_stop:hover {
       background: #EBDCD4 !important;
       box-shadow: 0 2px 4px rgba(120, 70, 55, 0.08) !important;
     }
-    #__rp_panel .__rp_btn:disabled {
+    #${ID} .__rp_btn:disabled {
       opacity: 0.45 !important;
       cursor: not-allowed !important;
       transform: none !important;
     }
-    #__rp_panel .__rp_row {
+    #${ID} .__rp_row {
       display: flex !important;
       gap: 8px !important;
     }
-    #__rp_panel .__rp_row .__rp_btn {
+    #${ID} .__rp_row .__rp_btn {
       margin: 0 !important;
     }
-    #__rp_panel input[type=range] {
+    #${ID} input[type=range] {
       -webkit-appearance: none !important;
       appearance: none !important;
       width: 100% !important;
@@ -655,7 +390,7 @@
       cursor: pointer !important;
       box-sizing: border-box !important;
     }
-    #__rp_panel input[type=range]::-webkit-slider-thumb {
+    #${ID} input[type=range]::-webkit-slider-thumb {
       -webkit-appearance: none !important;
       appearance: none !important;
       width: 16px !important;
@@ -667,14 +402,14 @@
       cursor: pointer !important;
       transition: transform 120ms ease-out, box-shadow 120ms ease-out !important;
     }
-    #__rp_panel input[type=range]::-webkit-slider-thumb:hover {
+    #${ID} input[type=range]::-webkit-slider-thumb:hover {
       transform: scale(1.15) !important;
       box-shadow: 0 2px 6px rgba(64, 58, 42, 0.35) !important;
     }
-    #__rp_panel input[type=range]::-webkit-slider-thumb:active {
+    #${ID} input[type=range]::-webkit-slider-thumb:active {
       transform: scale(1.25) !important;
     }
-    #__rp_panel input[type=range]::-moz-range-thumb {
+    #${ID} input[type=range]::-moz-range-thumb {
       width: 16px !important;
       height: 16px !important;
       border-radius: 50% !important;
@@ -684,19 +419,19 @@
       cursor: pointer !important;
       transition: transform 120ms ease-out, box-shadow 120ms ease-out !important;
     }
-    #__rp_panel input[type=range]::-moz-range-thumb:hover {
+    #${ID} input[type=range]::-moz-range-thumb:hover {
       transform: scale(1.15) !important;
     }
-    #__rp_panel input[type=range]::-moz-range-thumb:active {
+    #${ID} input[type=range]::-moz-range-thumb:active {
       transform: scale(1.25) !important;
     }
     /* ── 커스텀 셀렉트 UI ── */
-    #__rp_panel .__rp_cselect_wrap {
+    #${ID} .__rp_cselect_wrap {
       position: relative;
       flex: 1;
       min-width: 0;
     }
-    #__rp_panel .__rp_cselect_btn {
+    #${ID} .__rp_cselect_btn {
       display: flex !important;
       align-items: center !important;
       justify-content: space-between !important;
@@ -713,28 +448,28 @@
       text-align: left !important;
       transition: border-color 140ms ease-out, box-shadow 140ms ease-out, background 140ms ease-out, transform 120ms ease-out !important;
     }
-    #__rp_panel .__rp_cselect_btn:hover {
+    #${ID} .__rp_cselect_btn:hover {
       background: #FDFCF8 !important;
       border-color: #C5BFB1 !important;
     }
-    #__rp_panel .__rp_cselect_btn:active {
+    #${ID} .__rp_cselect_btn:active {
       transform: scale(0.985) !important;
     }
-    #__rp_panel .__rp_cselect_wrap.open .__rp_cselect_btn {
+    #${ID} .__rp_cselect_wrap.open .__rp_cselect_btn {
       border-color: #A89F8C !important;
       box-shadow: 0 0 0 3px rgba(122, 112, 92, 0.14) !important;
       background: #FAF9F4 !important;
     }
-    #__rp_panel .__rp_cselect_arr {
+    #${ID} .__rp_cselect_arr {
       flex: none;
       margin-left: 6px;
       color: ${SOFT};
       transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1) !important;
     }
-    #__rp_panel .__rp_cselect_wrap.open .__rp_cselect_arr {
+    #${ID} .__rp_cselect_wrap.open .__rp_cselect_arr {
       transform: rotate(180deg) !important;
     }
-    #__rp_panel .__rp_cselect_menu {
+    #${ID} .__rp_cselect_menu {
       position: absolute;
       left: 0;
       right: 0;
@@ -752,13 +487,13 @@
       pointer-events: none;
       transition: opacity 120ms ease-out, transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
     }
-    #__rp_panel .__rp_cselect_wrap.open .__rp_cselect_menu {
+    #${ID} .__rp_cselect_wrap.open .__rp_cselect_menu {
       opacity: 1;
       transform: scale(1) translateY(0);
       pointer-events: auto;
       transition: opacity 160ms ease-out, transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
     }
-    #__rp_panel .__rp_cselect_opt {
+    #${ID} .__rp_cselect_opt {
       padding: 7px 9px;
       font-size: 12.5px;
       font-weight: 500;
@@ -771,20 +506,20 @@
       transition: background 100ms ease-out, color 100ms ease-out;
       line-height: 1.3;
     }
-    #__rp_panel .__rp_cselect_opt:hover {
+    #${ID} .__rp_cselect_opt:hover {
       background: #EFECE3;
       color: #2B2924;
     }
-    #__rp_panel .__rp_cselect_opt.selected {
+    #${ID} .__rp_cselect_opt.selected {
       background: #E5E0D2;
       font-weight: 600;
       color: #2B2924;
     }
-    #__rp_panel .__rp_cselect_opt svg {
+    #${ID} .__rp_cselect_opt svg {
       flex: none;
       margin-left: 6px;
     }
-    #__rp_panel #__rp_x {
+    #${ID} #__rp_x {
       width: 22px;
       height: 22px;
       display: flex;
@@ -797,24 +532,24 @@
       line-height: 1;
       transition: background 120ms ease-out, color 120ms ease-out, transform 120ms ease-out;
     }
-    #__rp_panel #__rp_x:hover {
+    #${ID} #__rp_x:hover {
       background: #E4E0D4;
       color: ${INK};
     }
-    #__rp_panel #__rp_x:active {
+    #${ID} #__rp_x:active {
       transform: scale(0.92);
     }
-    #__rp_panel .__rp_btn:focus-visible,
-    #__rp_panel .__rp_cselect_btn:focus-visible,
-    #__rp_panel input:focus-visible {
+    #${ID} .__rp_btn:focus-visible,
+    #${ID} .__rp_cselect_btn:focus-visible,
+    #${ID} input:focus-visible {
       outline: 2px solid #A89F8C;
       outline-offset: 2px;
     }
     @media (prefers-reduced-motion: reduce) {
-      #__rp_panel,
-      #__rp_panel *,
-      #__rp_panel *::before,
-      #__rp_panel *::after {
+      #${ID},
+      #${ID} *,
+      #${ID} *::before,
+      #${ID} *::after {
         animation-duration: 0.01ms !important;
         transition-duration: 0.01ms !important;
       }
@@ -958,6 +693,7 @@
     return selObj;
   }
 
+  // 외부 클릭 및 Escape 키 처리
   document.addEventListener("click", (e) => {
     if (!panel.contains(e.target)) {
       panel.querySelectorAll(".__rp_cselect_wrap.open").forEach((el) => el.classList.remove("open"));
@@ -1031,3 +767,4 @@
 
   setStatus("• '자동 추출'을 누르면 한 번에 끝\n• 수동은 ① 전체 로딩 후 ② 추출·저장");
 })();
+

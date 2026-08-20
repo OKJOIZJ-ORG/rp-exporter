@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "앵챗추출기",
-  "version": "2.14.2",
+  "version": "2.11.1",
   "description": "채팅 전체를 .txt로 내보냅니다. 파일명 지정 + 토글 추출 선택 + 자동/수동 로딩 + ZIP 분할.",
   "permissions": [
     "scripting",

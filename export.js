@@ -1,3 +1,4 @@
+import os
 (() => {
   const ID = "__rp_panel";
   if (document.getElementById(ID)) {
@@ -9,35 +10,63 @@
   }
 
   // ══ 자동 모드 설정 (가상 스크롤 / 인피니트 로딩 최적화) ══
-  const AUTO_STABLE = 12;  // 높이/메시지/상단텍스트가 12회 연속 불변이어야 최상단 판정 (~10초 대기)
-  const DWELL = 600;       // 상단 고정 후 네트워크 응답 대기(ms)
+  const AUTO_STABLE = 10;  // 높이/메시지/상단텍스트가 10회 연속 불변이어야 최상단 판정 (~10~15초 대기)
+  const DWELL = 800;       // 상단 고정 후 네트워크/DB(Firestore 등) 응답 대기 기본시간(ms)
   const OSC = 2;           // 한 사이클당 진동 횟수
   let SPEED_MULT = 1;      // 추출 속도 배수(작을수록 빠름) · 슬라이더로 실시간 조절
   const DEFAULT_NAME = "rp_chat";
-  const VER = (() => { try { return "v" + chrome.runtime.getManifest().version; } catch (e) { return ""; } })();
+  const VER = (() => { try { return "v" + chrome.runtime.getManifest().version; } catch (e) { return "v2.13.0"; } })();
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const raf = () => new Promise((r) => requestAnimationFrame(r));
   const NBSP = String.fromCharCode(160);
   const SEP = "\n\n────────────────────────\n\n";
 
+  // ── 텍스트 정규화 ──
+  function cleanText(t) {
+    if (!t) return "";
+    return t
+      .split(NBSP).join(" ")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "") // 제로 위드 스페이스 제거
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .replace(/\n{4,}/g, "\n\n\n")
+      .trim();
+  }
+
   // ── 가상 스크롤(content-visibility: auto) 강제 렌더링 오버라이드 ──
   // Chromium에서 content-visibility: auto가 걸린 비가시 턴의 innerText 유실 방지
   let forceRenderStyle = null;
   function enableForceRender() {
-    if (forceRenderStyle && document.contains(forceRenderStyle)) return;
-    forceRenderStyle = document.createElement("style");
-    forceRenderStyle.id = "__rp_force_render";
-    forceRenderStyle.textContent = `
-      [data-turn-key], [data-message-id], details, .chat-viewer-scrollbar-autohide *,
-      [data-capture-selectable] *, main * {
-        content-visibility: visible !important;
-        contain-intrinsic-size: auto none !important;
-        contain: none !important;
-      }
-    `;
-    document.documentElement.appendChild(forceRenderStyle);
+    if (!forceRenderStyle || !document.contains(forceRenderStyle)) {
+      forceRenderStyle = document.createElement("style");
+      forceRenderStyle.id = "__rp_force_render";
+      forceRenderStyle.textContent = `
+        [data-turn-key], [data-message-id], details, .chat-viewer-scrollbar-autohide,
+        .chat-viewer-scrollbar-autohide *, [data-capture-selectable], [data-capture-selectable] *,
+        main, main *, [role='log'], [role='log'] * {
+          content-visibility: visible !important;
+          contain-intrinsic-size: auto none !important;
+          contain: none !important;
+          overflow-anchor: auto !important;
+        }
+      `;
+      document.documentElement.appendChild(forceRenderStyle);
+    }
+
+    // DOM 인라인 스타일 직접 제거/오버라이드 (React 인라인 스타일 대응)
+    try {
+      const candidates = document.querySelectorAll("[data-turn-key], [data-message-id], [class*='message'], [class*='turn']");
+      candidates.forEach((el) => {
+        if (el.style) {
+          el.style.setProperty("content-visibility", "visible", "important");
+          el.style.setProperty("contain-intrinsic-size", "none", "important");
+          el.style.setProperty("contain", "none", "important");
+        }
+      });
+    } catch (e) {}
   }
+
   function disableForceRender() {
     if (forceRenderStyle && document.contains(forceRenderStyle)) {
       forceRenderStyle.remove();
@@ -47,11 +76,23 @@
 
   // ── 스크롤러 / 리스트 탐색 엔진 ──
   function findScroller() {
-    // 1순위: 알려진 플랫폼 고유 채팅 뷰어 컨테이너
+    // 1순위: 알려진 플랫폼 고유 채팅 뷰어 컨테이너 (TeapotChat data-capture-selectable, chat-viewer 등)
+    const turnKeyEl = document.querySelector("[data-turn-key], [data-message-id]");
+    if (turnKeyEl) {
+      let cur = turnKeyEl.parentElement;
+      while (cur && cur !== document.body && cur !== document.documentElement) {
+        const s = getComputedStyle(cur);
+        if (/(auto|scroll)/.test(s.overflowY) && cur.scrollHeight > cur.clientHeight + 40) {
+          return cur;
+        }
+        cur = cur.parentElement;
+      }
+    }
+
     const explicit = document.querySelector("[data-capture-selectable], .chat-viewer-scrollbar-autohide, main [class*='overflow-y-auto'], [role='log'], [aria-label*='채팅'], [aria-label*='chat']");
     if (explicit) {
       const s = getComputedStyle(explicit);
-      if (/(auto|scroll)/.test(s.overflowY) && explicit.scrollHeight > explicit.clientHeight + 50) {
+      if (/(auto|scroll)/.test(s.overflowY) && explicit.scrollHeight > explicit.clientHeight + 40) {
         return explicit;
       }
     }
@@ -132,10 +173,59 @@
     if (list && list.children.length > 0) {
       return [...list.children].filter((c) => {
         if (c.id === ID || c.closest("#" + ID) || c.getAttribute("aria-hidden") === "true") return false;
-        return (c.innerText || "").trim().length > 0;
+        return (c.innerText || c.textContent || "").trim().length > 0;
       });
     }
     return [];
+  }
+
+  // ── 무손실 턴 텍스트 추출 (innerText + DOM Tree Fallback) ──
+  function extractTurnText(el) {
+    if (!el) return "";
+
+    // 1. 인라인 스타일 및 reflow 강제
+    if (el.style && el.style.contentVisibility) {
+      el.style.setProperty("content-visibility", "visible", "important");
+      el.style.setProperty("contain-intrinsic-size", "none", "important");
+    }
+
+    // 2. details 요소 펼치기
+    if (expandChk && expandChk.checked) {
+      try {
+        if (el.tagName === "DETAILS") el.open = true;
+        el.querySelectorAll("details").forEach((d) => (d.open = true));
+      } catch (e) {}
+    }
+
+    // 3. 1차 시도: innerText
+    let t = cleanText(el.innerText || "");
+    if (t.length >= 2) return t;
+
+    // 4. 2차 시도: 강제 reflow 후 innerText
+    try { void el.offsetHeight; } catch (e) {}
+    t = cleanText(el.innerText || "");
+    if (t.length >= 2) return t;
+
+    // 5. 3차 시도: 하위 블록/텍스트 노드 구조적 순회 (Chromium Virtualizer 레이아웃 지연 무력화)
+    try {
+      const parts = [];
+      const blocks = el.querySelectorAll("p, [class*='prose'], [class*='bubble'], [class*='message'], [class*='content'], pre, blockquote, div, span");
+      if (blocks.length > 0) {
+        for (const b of blocks) {
+          // 말단 텍스트 노드 컨테이너만 수집
+          if (b.children.length === 0 && (b.textContent || "").trim().length > 0) {
+            const raw = cleanText(b.textContent);
+            if (raw && !parts.includes(raw)) parts.push(raw);
+          }
+        }
+      }
+      if (parts.length > 0) {
+        return parts.join("\n").trim();
+      }
+    } catch (e) {}
+
+    // 6. 최종 fallback: textContent
+    return cleanText(el.textContent || "");
   }
 
   // ── 대화 상태 시그니처 (새 턴 유입 감지) ──
@@ -146,8 +236,8 @@
     const sh = Math.round(scroller.scrollHeight || 0);
     const topTurn = turns[0];
     const botTurn = turns[turns.length - 1];
-    const topText = topTurn ? (topTurn.innerText || "").trim().slice(0, 40) : "";
-    const botText = botTurn ? (botTurn.innerText || "").trim().slice(0, 40) : "";
+    const topText = topTurn ? extractTurnText(topTurn).slice(0, 40) : "";
+    const botText = botTurn ? extractTurnText(botTurn).slice(0, 40) : "";
     return {
       count,
       sh,
@@ -164,16 +254,11 @@
     for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
     return h + ":" + s.length;
   }
-  const stripNbsp = (t) => t.split(NBSP).join(" ");
 
   function captureElements(elements) {
-    const open = expandChk.checked;
-    try { document.querySelectorAll("details").forEach((d) => (d.open = open)); } catch (e) {}
-
     for (const el of elements) {
       if (!el || el.getAttribute("aria-hidden") === "true" || el.id === ID || el.closest("#" + ID)) continue;
-      let t = "";
-      try { t = stripNbsp(el.innerText || "").trim(); } catch (e) { continue; }
+      const t = extractTurnText(el);
       if (t.length < 2) continue;
       const k = hash(t);
       if (!seen.has(k)) {
@@ -205,7 +290,7 @@
       if (stopFlag) break;
       ensureScroller();
       let len = 0;
-      try { len = (scroller.innerText || "").length; } catch (e) { break; }
+      try { len = (scroller.innerText || scroller.textContent || "").length; } catch (e) { break; }
       if (len === lastLen) stable++; else stable = 0;
       lastLen = len;
       if (stable >= 2) break;
@@ -214,26 +299,35 @@
 
   let busy = false, stopFlag = false;
 
-  // ── 최상단 핀 & 진동: IntersectionObserver / 스크롤 이벤트 자극 ──
+  // ── 최상단 핀 & 미세 진동 (IntersectionObserver / Firestore 트리거 활성화) ──
   async function oscillateTop() {
     ensureScroller();
     const isRev = getComputedStyle(scroller).flexDirection === "column-reverse" || /flex-col-reverse/.test(scroller.className || "");
     const topVal = isRev ? -1e9 : 0;
-    const offsetVal = isRev ? 120 : Math.min(100, Math.max(30, Math.round(scroller.clientHeight * 0.15)));
+    const offsetVal = isRev ? 80 : Math.min(60, Math.max(20, Math.round(scroller.clientHeight * 0.1)));
 
     for (let k = 0; k < OSC; k++) {
       scroller.scrollTop = topVal;
-      try { scroller.dispatchEvent(new Event("scroll", { bubbles: true })); } catch (e) {}
-      await sleep(Math.round(DWELL * SPEED_MULT));
+      try {
+        scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
+        scroller.dispatchEvent(new Event("wheel", { bubbles: true }));
+      } catch (e) {}
+      await sleep(Math.round(DWELL * SPEED_MULT * 0.6));
       if (stopFlag) return;
 
+      // 미세 오프셋 지점으로 스크롤하여 센티넬 IntersectionObserver 재진입 유도
       scroller.scrollTop = isRev ? (topVal + offsetVal) : offsetVal;
-      try { scroller.dispatchEvent(new Event("scroll", { bubbles: true })); } catch (e) {}
-      await sleep(Math.round(180 * SPEED_MULT));
+      try {
+        scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
+      } catch (e) {}
+      await sleep(Math.round(200 * SPEED_MULT));
+
+      scroller.scrollTop = topVal;
+      try {
+        scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
+      } catch (e) {}
+      await sleep(Math.round(DWELL * SPEED_MULT * 0.4));
     }
-    scroller.scrollTop = topVal;
-    try { scroller.dispatchEvent(new Event("scroll", { bubbles: true })); } catch (e) {}
-    await sleep(Math.round(220 * SPEED_MULT));
   }
 
   // ── ①/▶ 전체 로딩 (auto=false: ■ 정지까지 / auto=true: 자동 판정 종료) ──
@@ -248,6 +342,23 @@
       await oscillateTop();
       if (stopFlag) break;
 
+      // Firestore / Network 지연 응답 대기 (최대 1.2초간 데이터 증가 관측)
+      const pollStart = performance.now();
+      let prevCount = getRecognizedTurns().length;
+      let prevSh = scroller.scrollHeight;
+
+      while (performance.now() - pollStart < Math.round(1200 * SPEED_MULT)) {
+        await sleep(150);
+        if (stopFlag) break;
+        const curCount = getRecognizedTurns().length;
+        const curSh = scroller.scrollHeight;
+        if (curCount > prevCount || curSh > prevSh + 30) {
+          prevCount = curCount;
+          prevSh = curSh;
+          stable = 0; // 새 데이터 감지 즉시 안정 카운트 리셋
+        }
+      }
+
       const sig = getChatSignature();
       if (auto) {
         if (sig.key === lastKey) {
@@ -256,7 +367,7 @@
           stable = 0;
           lastKey = sig.key;
         }
-        setStatus("자동 로딩… " + i + "회 · " + sig.count + "개 턴 로드됨 (안정 " + stable + "/" + AUTO_STABLE + ")");
+        setStatus("자동 로딩… " + i + "회 · " + sig.count + "개 턴 감지 (완료 판정 " + stable + "/" + AUTO_STABLE + ")");
         if (stable >= AUTO_STABLE) break;
       } else {
         setStatus("로딩 중… " + i + "회 · " + sig.count + "개 턴 감지 (충분하면 ■ 정지)");
@@ -269,7 +380,7 @@
     }
   }
 
-  // ── 전 턴 무손실 스윗 캡처 ──
+  // ── 전 턴 무손실 스윗 캡처 (DOM 순회 + 점진적 스크롤 보충) ──
   async function sweepCapture() {
     enableForceRender();
     ensureScroller();
@@ -279,29 +390,39 @@
     // 시작 메시지(Intro / Start Setting)가 스크롤러 상단 별도 블록에 있는 경우 선행 수집
     const introEl = scroller.querySelector(".pt-4, [class*='start-message'], [data-start-message]");
     if (introEl && !introEl.matches("[data-turn-key]") && !introEl.querySelector("[data-turn-key]")) {
-      const introText = stripNbsp(introEl.innerText || "").trim();
+      const introText = cleanText(introEl.innerText || introEl.textContent || "");
       if (introText.length > 5) {
         seen.add(hash(introText));
         blocks.push(introText);
       }
     }
 
-    // 1차: DOM에 존재하는 모든 턴 일괄 수집
+    // 1차: DOM에 이미 마운트되어 있는 모든 턴을 문서 순서대로 일괄 직접 추출
     const directTurns = getRecognizedTurns();
     if (directTurns.length > 0) {
-      captureElements(directTurns);
+      for (let idx = 0; idx < directTurns.length; idx++) {
+        const el = directTurns[idx];
+        const t = extractTurnText(el);
+        if (t.length >= 2) {
+          const k = hash(t);
+          if (!seen.has(k)) {
+            seen.add(k);
+            blocks.push(t);
+          }
+        }
+      }
     }
 
-    // 2차: 상단부터 하단까지 순차 스크롤 스윗하며 동적 렌더링/누락분 보충
+    // 2차: 상단부터 하단까지 순차 스크롤 스윗하며 가상화/동적 렌더링 누락분 보충
     const isRev = getComputedStyle(scroller).flexDirection === "column-reverse" || /flex-col-reverse/.test(scroller.className || "");
     const min = isRev ? -1e9 : 0;
     const max = Math.max(scroller.scrollHeight - scroller.clientHeight, 1);
     const ch = scroller.clientHeight || 500;
-    const step = Math.max(Math.round(ch * 0.7), 250);
+    const step = Math.max(Math.round(ch * 0.45), 200); // 턴 누락 방지를 위해 더 촘촘한 스텝(0.45x)
 
     let pos = 0;
     scroller.scrollTop = 0;
-    await settle(200);
+    await settle(150);
     captureVisible();
 
     let s = 0;
@@ -310,14 +431,14 @@
       pos = Math.min(pos + step, max);
       scroller.scrollTop = pos;
       try { scroller.dispatchEvent(new Event("scroll", { bubbles: true })); } catch (e) {}
-      await settle(200);
+      await sleep(Math.round(100 * SPEED_MULT));
       captureVisible();
       const pct = Math.round((pos / max) * 100);
-      setStatus("수집 " + pct + "% · " + blocks.length + "개 턴 확보");
+      setStatus("무손실 검증 수집 " + pct + "% · " + blocks.length + "개 턴 확보");
     }
 
     scroller.scrollTop = max;
-    await settle(200);
+    await settle(150);
     captureVisible();
 
     // 완료 후 원위치 및 스타일 정리
@@ -491,19 +612,19 @@
     @keyframes __rp_fadeOut {
       to { opacity: 0; transform: scale(0.97) translateY(6px); }
     }
-    #${ID} {
+    #__rp_panel {
       animation: __rp_fadeIn 200ms cubic-bezier(0.23, 1, 0.32, 1);
       user-select: none;
     }
-    #${ID}.__rp_closing {
+    #__rp_panel.__rp_closing {
       animation: __rp_fadeOut 150ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
     }
-    #${ID} input[type=text]:focus,
-    #${ID} input[type=number]:focus {
+    #__rp_panel input[type=text]:focus,
+    #__rp_panel input[type=number]:focus {
       border-color: #A89F8C !important;
       box-shadow: 0 0 0 3px rgba(122, 112, 92, 0.14) !important;
     }
-    #${ID} .__rp_btn {
+    #__rp_panel .__rp_btn {
       display: block !important;
       width: 100% !important;
       margin: 0 0 8px 0 !important;
@@ -517,53 +638,53 @@
       box-sizing: border-box !important;
       transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1), background 140ms ease-out, box-shadow 140ms ease-out, opacity 140ms ease-out !important;
     }
-    #${ID} .__rp_btn:active {
+    #__rp_panel .__rp_btn:active {
       transform: scale(0.975) !important;
     }
-    #${ID} .__rp_auto {
+    #__rp_panel .__rp_auto {
       border: 1px solid #38352D !important;
       background: #44413A !important;
       color: #FAF8F2 !important;
       font-weight: 700 !important;
       box-shadow: 0 1px 3px rgba(64, 58, 42, 0.18) !important;
     }
-    #${ID} .__rp_auto:hover {
+    #__rp_panel .__rp_auto:hover {
       background: #4E4B42 !important;
       box-shadow: 0 2px 5px rgba(64, 58, 42, 0.22) !important;
     }
-    #${ID} .__rp_sec {
+    #__rp_panel .__rp_sec {
       border: 1px solid #CBC5B7 !important;
       background: #E8E4D9 !important;
       color: #3A3830 !important;
       box-shadow: 0 1px 2px rgba(64, 58, 42, 0.05) !important;
     }
-    #${ID} .__rp_sec:hover {
+    #__rp_panel .__rp_sec:hover {
       background: #DFDACD !important;
       box-shadow: 0 2px 4px rgba(64, 58, 42, 0.08) !important;
     }
-    #${ID} .__rp_stop {
+    #__rp_panel .__rp_stop {
       border: 1px solid #DFCBC0 !important;
       background: #F1E7E1 !important;
       color: #A0473A !important;
       box-shadow: 0 1px 2px rgba(120, 70, 55, 0.05) !important;
     }
-    #${ID} .__rp_stop:hover {
+    #__rp_panel .__rp_stop:hover {
       background: #EBDCD4 !important;
       box-shadow: 0 2px 4px rgba(120, 70, 55, 0.08) !important;
     }
-    #${ID} .__rp_btn:disabled {
+    #__rp_panel .__rp_btn:disabled {
       opacity: 0.45 !important;
       cursor: not-allowed !important;
       transform: none !important;
     }
-    #${ID} .__rp_row {
+    #__rp_panel .__rp_row {
       display: flex !important;
       gap: 8px !important;
     }
-    #${ID} .__rp_row .__rp_btn {
+    #__rp_panel .__rp_row .__rp_btn {
       margin: 0 !important;
     }
-    #${ID} input[type=range] {
+    #__rp_panel input[type=range] {
       -webkit-appearance: none !important;
       appearance: none !important;
       width: 100% !important;
@@ -576,7 +697,7 @@
       cursor: pointer !important;
       box-sizing: border-box !important;
     }
-    #${ID} input[type=range]::-webkit-slider-thumb {
+    #__rp_panel input[type=range]::-webkit-slider-thumb {
       -webkit-appearance: none !important;
       appearance: none !important;
       width: 16px !important;
@@ -588,14 +709,14 @@
       cursor: pointer !important;
       transition: transform 120ms ease-out, box-shadow 120ms ease-out !important;
     }
-    #${ID} input[type=range]::-webkit-slider-thumb:hover {
+    #__rp_panel input[type=range]::-webkit-slider-thumb:hover {
       transform: scale(1.15) !important;
       box-shadow: 0 2px 6px rgba(64, 58, 42, 0.35) !important;
     }
-    #${ID} input[type=range]::-webkit-slider-thumb:active {
+    #__rp_panel input[type=range]::-webkit-slider-thumb:active {
       transform: scale(1.25) !important;
     }
-    #${ID} input[type=range]::-moz-range-thumb {
+    #__rp_panel input[type=range]::-moz-range-thumb {
       width: 16px !important;
       height: 16px !important;
       border-radius: 50% !important;
@@ -605,19 +726,19 @@
       cursor: pointer !important;
       transition: transform 120ms ease-out, box-shadow 120ms ease-out !important;
     }
-    #${ID} input[type=range]::-moz-range-thumb:hover {
+    #__rp_panel input[type=range]::-moz-range-thumb:hover {
       transform: scale(1.15) !important;
     }
-    #${ID} input[type=range]::-moz-range-thumb:active {
+    #__rp_panel input[type=range]::-moz-range-thumb:active {
       transform: scale(1.25) !important;
     }
     /* ── 커스텀 셀렉트 UI ── */
-    #${ID} .__rp_cselect_wrap {
+    #__rp_panel .__rp_cselect_wrap {
       position: relative;
       flex: 1;
       min-width: 0;
     }
-    #${ID} .__rp_cselect_btn {
+    #__rp_panel .__rp_cselect_btn {
       display: flex !important;
       align-items: center !important;
       justify-content: space-between !important;
@@ -634,28 +755,28 @@
       text-align: left !important;
       transition: border-color 140ms ease-out, box-shadow 140ms ease-out, background 140ms ease-out, transform 120ms ease-out !important;
     }
-    #${ID} .__rp_cselect_btn:hover {
+    #__rp_panel .__rp_cselect_btn:hover {
       background: #FDFCF8 !important;
       border-color: #C5BFB1 !important;
     }
-    #${ID} .__rp_cselect_btn:active {
+    #__rp_panel .__rp_cselect_btn:active {
       transform: scale(0.985) !important;
     }
-    #${ID} .__rp_cselect_wrap.open .__rp_cselect_btn {
+    #__rp_panel .__rp_cselect_wrap.open .__rp_cselect_btn {
       border-color: #A89F8C !important;
       box-shadow: 0 0 0 3px rgba(122, 112, 92, 0.14) !important;
       background: #FAF9F4 !important;
     }
-    #${ID} .__rp_cselect_arr {
+    #__rp_panel .__rp_cselect_arr {
       flex: none;
       margin-left: 6px;
       color: ${SOFT};
       transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1) !important;
     }
-    #${ID} .__rp_cselect_wrap.open .__rp_cselect_arr {
+    #__rp_panel .__rp_cselect_wrap.open .__rp_cselect_arr {
       transform: rotate(180deg) !important;
     }
-    #${ID} .__rp_cselect_menu {
+    #__rp_panel .__rp_cselect_menu {
       position: absolute;
       left: 0;
       right: 0;
@@ -673,13 +794,13 @@
       pointer-events: none;
       transition: opacity 120ms ease-out, transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
     }
-    #${ID} .__rp_cselect_wrap.open .__rp_cselect_menu {
+    #__rp_panel .__rp_cselect_wrap.open .__rp_cselect_menu {
       opacity: 1;
       transform: scale(1) translateY(0);
       pointer-events: auto;
       transition: opacity 160ms ease-out, transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
     }
-    #${ID} .__rp_cselect_opt {
+    #__rp_panel .__rp_cselect_opt {
       padding: 7px 9px;
       font-size: 12.5px;
       font-weight: 500;
@@ -692,20 +813,20 @@
       transition: background 100ms ease-out, color 100ms ease-out;
       line-height: 1.3;
     }
-    #${ID} .__rp_cselect_opt:hover {
+    #__rp_panel .__rp_cselect_opt:hover {
       background: #EFECE3;
       color: #2B2924;
     }
-    #${ID} .__rp_cselect_opt.selected {
+    #__rp_panel .__rp_cselect_opt.selected {
       background: #E5E0D2;
       font-weight: 600;
       color: #2B2924;
     }
-    #${ID} .__rp_cselect_opt svg {
+    #__rp_panel .__rp_cselect_opt svg {
       flex: none;
       margin-left: 6px;
     }
-    #${ID} #__rp_x {
+    #__rp_panel #__rp_x {
       width: 22px;
       height: 22px;
       display: flex;
@@ -718,24 +839,24 @@
       line-height: 1;
       transition: background 120ms ease-out, color 120ms ease-out, transform 120ms ease-out;
     }
-    #${ID} #__rp_x:hover {
+    #__rp_panel #__rp_x:hover {
       background: #E4E0D4;
       color: ${INK};
     }
-    #${ID} #__rp_x:active {
+    #__rp_panel #__rp_x:active {
       transform: scale(0.92);
     }
-    #${ID} .__rp_btn:focus-visible,
-    #${ID} .__rp_cselect_btn:focus-visible,
-    #${ID} input:focus-visible {
+    #__rp_panel .__rp_btn:focus-visible,
+    #__rp_panel .__rp_cselect_btn:focus-visible,
+    #__rp_panel input:focus-visible {
       outline: 2px solid #A89F8C;
       outline-offset: 2px;
     }
     @media (prefers-reduced-motion: reduce) {
-      #${ID},
-      #${ID} *,
-      #${ID} *::before,
-      #${ID} *::after {
+      #__rp_panel,
+      #__rp_panel *,
+      #__rp_panel *::before,
+      #__rp_panel *::after {
         animation-duration: 0.01ms !important;
         transition-duration: 0.01ms !important;
       }

@@ -14,7 +14,7 @@
   const OSC = 2;           // 한 사이클당 진동 횟수
   let SPEED_MULT = 1;      // 추출 속도 배수(작을수록 빠름) · 슬라이더로 실시간 조절
   const DEFAULT_NAME = "rp_chat";
-  const VER = (() => { try { return "v" + chrome.runtime.getManifest().version; } catch (e) { return "v2.14.1"; } })();
+  const VER = (() => { try { return "v" + chrome.runtime.getManifest().version; } catch (e) { return "v2.14.2"; } })();
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const raf = () => new Promise((r) => requestAnimationFrame(r));
@@ -71,24 +71,24 @@
     }
   }
 
-  // ── 사이드바 / 드로어 / 메타 태그 판별 (상태창 트랩 원천 차단) ──
-  function isSidebarOrWidget(el) {
+  // ── 사이드바 / 비대화 메타 태그 제외 판별 ──
+  function isExcluded(el) {
     if (!el) return true;
     if (el.matches("aside, nav, header, footer, script, style, noscript, svg, iframe")) return true;
-    if (el.closest("aside, [role='complementary'], nav, header, footer, [class*='sidebar'], [class*='drawer'], [id*='sidebar']")) return true;
+    if (el.closest("aside, [role='complementary'], nav, header, footer, [id*='sidebar']")) return true;
     return false;
   }
 
   // ── 턴 점수 계산 ──
   function scoreOf(el) {
-    if (isSidebarOrWidget(el)) return 0;
+    if (isExcluded(el)) return 0;
     let n = 0;
     for (const c of el.children) {
       if (c.getAttribute("aria-hidden") === "true" || c.id === ID || c.closest("#" + ID)) continue;
       if (c.matches("script, style, noscript, svg, iframe")) continue;
-      if (c.matches("[data-turn-key], [data-message-id], [class*='message'], [class*='turn'], [class*='bubble'], [class*='chat-item'], [class*='chat-message']")) {
+      if (c.matches("[data-turn-key], [data-message-id], [class*='turn'], [class*='message'], [class*='bubble'], [class*='chat-item'], [class*='card']")) {
         n += 3;
-      } else if ((c.innerText || "").trim().length > 30) {
+      } else if ((c.innerText || "").trim().length > 25) {
         n++;
       }
     }
@@ -97,11 +97,11 @@
 
   // ── 스크롤러 탐색 ──
   function findScroller() {
-    // 1순위: 명시적 메인 채팅 뷰어
+    // 1순위: 티팟 등 고유 뷰어 및 메인 채팅 스크롤러
     const explicit = document.querySelector("[data-capture-selectable], .chat-viewer-scrollbar-autohide, main [class*='overflow-y-auto'], main");
     if (explicit) {
       const s = getComputedStyle(explicit);
-      if (/(auto|scroll)/.test(s.overflowY) && explicit.scrollHeight > explicit.clientHeight + 40) {
+      if (/(auto|scroll)/.test(s.overflowY) && explicit.scrollHeight > explicit.clientHeight + 20) {
         return explicit;
       }
     }
@@ -109,9 +109,9 @@
     // 2순위: 사이드바 제외, 스크롤 가능 컨테이너 중 턴 점수 최상위
     const all = [...document.querySelectorAll("*")].filter((el) => {
       if (el.id === ID || el.closest("#" + ID)) return false;
-      if (isSidebarOrWidget(el)) return false;
+      if (isExcluded(el)) return false;
       const s = getComputedStyle(el);
-      return /(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 40;
+      return /(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 20;
     });
 
     if (all.length > 0) {
@@ -138,7 +138,7 @@
     let best = scroller;
     let bestScore = scoreOf(scroller);
 
-    const candidates = [...scroller.querySelectorAll("div, main, section, ul")].filter(el => !isSidebarOrWidget(el));
+    const candidates = [...scroller.querySelectorAll("div, main, section, ul")].filter(el => !isExcluded(el));
     for (const el of candidates) {
       if (el.closest("[class*='turn'], [class*='message'], [data-turn-key]")) continue;
       const sc = scoreOf(el);
@@ -158,7 +158,7 @@
 
   // ── 무손실 턴 텍스트 추출 (innerText + DOM Tree Fallback) ──
   function extractTurnText(el) {
-    if (!el || isSidebarOrWidget(el)) return "";
+    if (!el || isExcluded(el)) return "";
 
     if (el.style && el.style.contentVisibility) {
       el.style.setProperty("content-visibility", "visible", "important");
@@ -187,7 +187,7 @@
       const blocks = el.querySelectorAll("p, [class*='prose'], [class*='bubble'], [class*='message'], [class*='content'], pre, blockquote, div, span");
       if (blocks.length > 0) {
         for (const b of blocks) {
-          if (isSidebarOrWidget(b)) continue;
+          if (isExcluded(b)) continue;
           if (b.children.length === 0 && (b.textContent || "").trim().length > 0) {
             const raw = cleanText(b.textContent);
             if (raw && !parts.includes(raw)) parts.push(raw);
@@ -211,7 +211,7 @@
   function captureElements(elements) {
     for (const el of elements) {
       if (!el || el.getAttribute("aria-hidden") === "true" || el.id === ID || el.closest("#" + ID)) continue;
-      if (isSidebarOrWidget(el)) continue;
+      if (isExcluded(el)) continue;
       const t = extractTurnText(el);
       if (t.length < 2) continue;
       const k = hash(t);
@@ -228,7 +228,7 @@
     try { document.querySelectorAll("details").forEach((d) => (d.open = open)); } catch (e) {}
 
     // 1. TeapotChat: data-turn-key
-    const turnKeys = [...scroller.querySelectorAll("[data-turn-key]")].filter((el) => !isSidebarOrWidget(el));
+    const turnKeys = [...scroller.querySelectorAll("[data-turn-key]")].filter((el) => !isExcluded(el));
     if (turnKeys.length > 0) {
       captureElements(turnKeys);
       return;
@@ -237,16 +237,16 @@
     // 2. Caveduck 및 기타: list.children
     const list = findList(scroller);
     if (list && list.children.length > 0) {
-      captureElements([...list.children].filter(c => !isSidebarOrWidget(c)));
+      captureElements([...list.children].filter(c => !isExcluded(c)));
     }
   }
 
   // ── 대화 상태 시그니처 ──
   function getChatSignature() {
     ensureScroller();
-    const turnKeys = [...scroller.querySelectorAll("[data-turn-key]")].filter(el => !isSidebarOrWidget(el));
+    const turnKeys = [...scroller.querySelectorAll("[data-turn-key]")].filter(el => !isExcluded(el));
     const list = findList(scroller);
-    const validChildren = list ? [...list.children].filter(c => !isSidebarOrWidget(c)) : [];
+    const validChildren = list ? [...list.children].filter(c => !isExcluded(c)) : [];
     const count = turnKeys.length > 0 ? turnKeys.length : validChildren.length;
     const sh = Math.round(scroller.scrollHeight || 0);
     const f = validChildren.length > 0 ? (validChildren[0].innerText || "").slice(0, 40) : "";
@@ -277,17 +277,14 @@
 
   let busy = false, stopFlag = false;
 
-  // ── 양방향 스크롤 극단값 측정 및 강한 진동 (모든 플랫폼 로더 활성화) ──
+  // ── 상단 고정 및 부드러운 진동 (이전 대화 로더 활성화) ──
   async function oscillate() {
     ensureScroller();
-    scroller.scrollTop = -1e9; await sleep(60); const a1 = scroller.scrollTop;
-    scroller.scrollTop = 1e9; await sleep(60); const a2 = scroller.scrollTop;
-    const min = Math.min(a1, a2);
     const ch = scroller.clientHeight || 500;
-    const jump = Math.max(Math.round(ch * 0.6), 250);
+    const jump = Math.max(Math.round(ch * 0.5), 200);
 
     for (let k = 0; k < OSC; k++) {
-      scroller.scrollTop = min;
+      scroller.scrollTop = 0;
       try {
         scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
         scroller.dispatchEvent(new Event("wheel", { bubbles: true }));
@@ -295,14 +292,14 @@
       await sleep(Math.round(DWELL * SPEED_MULT * 0.6));
       if (stopFlag) return;
 
-      // 아래로 이동하여 인피니트 로더 / IntersectionObserver 재진입 유도
-      scroller.scrollTop = min + jump;
+      // 살짝 아래로 스크롤하여 탑 로더 / IntersectionObserver 재진입 유도
+      scroller.scrollTop = jump;
       try {
         scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
       } catch (e) {}
       await sleep(Math.round(200 * SPEED_MULT));
 
-      scroller.scrollTop = min;
+      scroller.scrollTop = 0;
       try {
         scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
       } catch (e) {}
@@ -357,7 +354,7 @@
     }
   }
 
-  // ── 전 턴 무손실 스윗 캡처 ──
+  // ── 전 턴 무손실 스윗 캡처 (상단부터 하단까지 순차 수집) ──
   async function sweepCapture() {
     enableForceRender();
     ensureScroller();
@@ -366,7 +363,7 @@
 
     // 시작 메시지(Intro / Start Setting)가 상단 별도 블록에 있는 경우 선행 수집
     const introEl = scroller.querySelector(".pt-4, [class*='start-message'], [data-start-message]");
-    if (introEl && !introEl.matches("[data-turn-key]") && !introEl.querySelector("[data-turn-key]") && !isSidebarOrWidget(introEl)) {
+    if (introEl && !introEl.matches("[data-turn-key]") && !introEl.querySelector("[data-turn-key]") && !isExcluded(introEl)) {
       const introText = cleanText(introEl.innerText || introEl.textContent || "");
       if (introText.length > 5) {
         seen.add(hash(introText));
@@ -374,35 +371,37 @@
       }
     }
 
-    // 양방향 스크롤 극단값 측정
-    scroller.scrollTop = -1e9; await sleep(80); const a1 = scroller.scrollTop;
-    scroller.scrollTop = 1e9; await sleep(80); const a2 = scroller.scrollTop;
-    const min = Math.min(a1, a2), max = Math.max(a1, a2);
     const ch = scroller.clientHeight || 500;
-    const step = Math.max(Math.round(ch * 0.5), 250);
+    const step = Math.max(Math.round(ch * 0.6), 250);
 
-    let pos = min;
-    scroller.scrollTop = min;
+    // 최상단으로 이동 후 수집 시작
+    scroller.scrollTop = 0;
     await settle(150);
     captureVisible();
 
+    let lastScrollTop = -1;
     let s = 0;
-    while (pos < max - 2 && s < 10000 && !stopFlag) {
+    while (s < 10000 && !stopFlag) {
       s++;
-      pos = Math.min(pos + step, max);
-      scroller.scrollTop = pos;
+      scroller.scrollTop += step;
       try { scroller.dispatchEvent(new Event("scroll", { bubbles: true })); } catch (e) {}
       await sleep(Math.round(100 * SPEED_MULT));
       captureVisible();
-      const pct = Math.round(((pos - min) / ((max - min) || 1)) * 100);
+
+      const cur = scroller.scrollTop;
+      const maxScroll = Math.max(scroller.scrollHeight - scroller.clientHeight, 0);
+      const pct = maxScroll > 0 ? Math.min(Math.round((cur / maxScroll) * 100), 100) : 100;
       setStatus("무손실 검증 수집 " + pct + "% · " + blocks.length + "개 턴 확보");
+
+      if (cur === lastScrollTop || cur >= maxScroll) break;
+      lastScrollTop = cur;
     }
 
-    scroller.scrollTop = max;
+    // 최하단 최종 캡처
+    scroller.scrollTop = scroller.scrollHeight;
     await settle(150);
     captureVisible();
 
-    scroller.scrollTop = max;
     disableForceRender();
     setStatus("수집 완료 · " + blocks.length + "개 턴 추출됨. 저장 중…");
   }

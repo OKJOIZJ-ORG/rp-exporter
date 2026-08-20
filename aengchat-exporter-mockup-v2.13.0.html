@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>앵챗추출기 화면 목업</title>
+  <style>
+    :root {
+      --ink: #44413A;
+      --label: #A8A395;
+      --soft: #6E695D;
+      --faint: #BCB6A6;
+      --line: #E0DCD0;
+      --panel: #EFEDE5;
+      --card: #F4F2EA;
+      --field: #FAF9F4;
+      --field-border: #D7D2C6;
+      --card-border: #E4E0D4;
+      --auto-border: #38352D;
+      --sec-bg: #E8E4D9;
+      --sec-border: #CBC5B7;
+      --stop-bg: #F1E7E1;
+      --stop-border: #DFCBC0;
+      --stop-text: #A0473A;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+    html {
+      min-height: 100%;
+      height: auto;
+      background: #272823;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font);
+      background:
+        radial-gradient(circle at 18% 14%, rgba(240, 238, 228, 0.18), transparent 35%),
+        linear-gradient(135deg, #272823 0%, #3f4e52 58%, #2d3436 100%);
+      background-attachment: fixed;
+      background-size: cover;
+      background-repeat: no-repeat;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      overflow-x: hidden;
+    }
+
+    .stage {
+      display: flex;
+      gap: 40px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+      width: min(100%, 960px);
+      margin: auto;
+    }
+
+    /* ── 좌측 설명 섹션 (Emil Kowalski 타이포그래피) ── */
+    .note {
+      width: 340px;
+      color: #EFEDE5;
+      padding-top: 14px;
+    }
+    .note h1 {
+      margin: 0 0 12px;
+      font-size: 25px;
+      letter-spacing: -0.03em;
+      font-weight: 700;
+      color: #FAF8F2;
+      line-height: 1.25;
+    }
+    .note-desc {
+      margin: 0 0 22px;
+      color: rgba(239, 237, 229, 0.76);
+      font-size: 13.5px;
+      line-height: 1.68;
+      letter-spacing: -0.01em;
+      word-break: keep-all;
+      text-wrap: pretty;
+    }
+    .note-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(239, 237, 229, 0.12);
+    }
+    .meta-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .meta-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: rgba(239, 237, 229, 0.52);
+      letter-spacing: -0.01em;
+      width: 64px;
+      flex: none;
+      user-select: none;
+    }
+    .meta-row code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: #FAF8F2;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+    }
+
+    /* ── 목업 패널 ── */
+    .mock-panel {
+      width: 292px;
+      padding: 16px;
+      background: var(--panel);
+      color: var(--ink);
+      font: 13px/1.5 var(--font);
+      border: 1px solid #DCD8CC;
+      border-radius: 16px;
+      box-shadow: 0 16px 44px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(64, 58, 42, 0.08);
+      user-select: none;
+      position: relative;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 13px;
+    }
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .brand-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      background: var(--ink);
+      align-self: center;
+    }
+    .brand-title {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+    }
+    .brand-ver {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--faint);
+      transform: translateY(-0.5px);
+    }
+    .close {
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      cursor: pointer;
+      color: var(--faint);
+      font-size: 14px;
+      line-height: 1;
+      transition: background 120ms ease-out, color 120ms ease-out, transform 120ms ease-out;
+    }
+    .close:hover {
+      background: #E4E0D4;
+      color: var(--ink);
+    }
+    .close:active {
+      transform: scale(0.92);
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 14px;
+      position: relative;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 9px;
+    }
+    .row:last-of-type { margin-bottom: 0; }
+    .row-label {
+      flex: none;
+      width: 60px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--label);
+    }
+
+    input[type=text],
+    input[type=number] {
+      display: block;
+      width: 100%;
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+      box-sizing: border-box;
+      padding: 8px 11px;
+      background: var(--field);
+      color: var(--ink);
+      border: 1px solid var(--field-border);
+      border-radius: 10px;
+      outline: none;
+      font: 500 13px/1.3 var(--font);
+      transition: border-color 140ms ease-out, box-shadow 140ms ease-out;
+    }
+    input[type=text]:focus,
+    input[type=number]:focus {
+      border-color: #A89F8C;
+      box-shadow: 0 0 0 3px rgba(122, 112, 92, 0.14);
+    }
+
+    /* ── 커스텀 드롭다운 셀렉트 ── */
+    .cselect-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 0;
+    }
+    .cselect-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 11px;
+      background: var(--field);
+      color: var(--ink);
+      border: 1px solid var(--field-border);
+      border-radius: 10px;
+      outline: none;
+      font: 500 13px/1.3 var(--font);
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 140ms ease-out, box-shadow 140ms ease-out, background 140ms ease-out, transform 120ms ease-out;
+    }
+    .cselect-btn:hover {
+      background: #FDFCF8;
+      border-color: #C5BFB1;
+    }
+    .cselect-btn:active {
+      transform: scale(0.985);
+    }
+    .cselect-wrap.open .cselect-btn {
+      border-color: #A89F8C;
+      box-shadow: 0 0 0 3px rgba(122, 112, 92, 0.14);
+      background: #FAF9F4;
+    }
+    .cselect-val {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .cselect-arr {
+      flex: none;
+      margin-left: 6px;
+      color: var(--soft);
+      transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    .cselect-wrap.open .cselect-arr {
+      transform: rotate(180deg);
+    }
+    .cselect-menu {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + 5px);
+      z-index: 1000;
+      background: #FAF9F4;
+      border: 1px solid #D7D2C6;
+      border-radius: 10px;
+      box-shadow: 0 10px 28px rgba(64, 58, 42, 0.16), 0 2px 6px rgba(64, 58, 42, 0.08);
+      padding: 4px;
+      box-sizing: border-box;
+      transform-origin: top center;
+      opacity: 0;
+      transform: scale(0.96) translateY(-4px);
+      pointer-events: none;
+      transition: opacity 120ms ease-out, transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    .cselect-wrap.open .cselect-menu {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+      pointer-events: auto;
+      transition: opacity 160ms ease-out, transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    .cselect-opt {
+      padding: 7px 9px;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--ink);
+      border-radius: 7px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: background 100ms ease-out, color 100ms ease-out;
+      line-height: 1.3;
+    }
+    .cselect-opt:hover {
+      background: #EFECE3;
+      color: #2B2924;
+    }
+    .cselect-opt.selected {
+      background: #E5E0D2;
+      font-weight: 600;
+      color: #2B2924;
+    }
+
+    .suffix {
+      font-size: 12px;
+      color: var(--soft);
+      white-space: nowrap;
+      flex: none;
+    }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 12px 0 0;
+      font-size: 12px;
+      color: #54514A;
+      cursor: pointer;
+    }
+    .check input {
+      width: 15px;
+      height: 15px;
+      flex: none;
+      padding: 0;
+      accent-color: var(--ink);
+      cursor: pointer;
+    }
+
+    input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      flex: none;
+      height: 4px;
+      padding: 0;
+      border: 0;
+      border-radius: 3px;
+      background: #DCD8CC;
+      outline: none;
+      cursor: pointer;
+      box-sizing: border-box;
+      margin: 0;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--ink);
+      border: 2px solid #FAF8F2;
+      box-shadow: 0 1px 3px rgba(64, 58, 42, 0.25);
+      cursor: pointer;
+      transition: transform 120ms ease-out, box-shadow 120ms ease-out;
+    }
+    input[type=range]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      box-shadow: 0 2px 6px rgba(64, 58, 42, 0.35);
+    }
+    input[type=range]::-webkit-slider-thumb:active {
+      transform: scale(1.25);
+    }
+    input[type=range]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--ink);
+      border: 2px solid #FAF8F2;
+      box-shadow: 0 1px 3px rgba(64, 58, 42, 0.25);
+      cursor: pointer;
+      transition: transform 120ms ease-out, box-shadow 120ms ease-out;
+    }
+    input[type=range]::-moz-range-thumb:hover {
+      transform: scale(1.15);
+    }
+    input[type=range]::-moz-range-thumb:active {
+      transform: scale(1.25);
+    }
+
+    .speed-divider {
+      height: 1px;
+      background: var(--line);
+      margin: 12px 0 0;
+    }
+    .speed {
+      margin: 11px 0 0;
+    }
+    .speed-name {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--label);
+      margin-bottom: 8px;
+    }
+    .speed-scale {
+      display: flex;
+      align-items: center;
+      margin-top: 7px;
+      font-size: 9.5px;
+      letter-spacing: 0.02em;
+      color: var(--faint);
+    }
+    .speed-scale > span { flex: 1; }
+    .speed-scale > span:first-child { text-align: left; }
+    .speed-scale > span:last-child { text-align: right; }
+    .speed-val {
+      flex: 1;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .btn {
+      display: block;
+      width: 100%;
+      margin: 0 0 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font: 600 13px/1.1 var(--font);
+      text-align: center;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      box-sizing: border-box;
+      transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1), background 140ms ease-out, box-shadow 140ms ease-out, opacity 140ms ease-out;
+    }
+    .btn:active {
+      transform: scale(0.975);
+    }
+    .auto {
+      border: 1px solid var(--auto-border);
+      background: var(--ink);
+      color: #FAF8F2;
+      font-weight: 700;
+      box-shadow: 0 1px 3px rgba(64, 58, 42, 0.18);
+    }
+    .auto:hover {
+      background: #4E4B42;
+      box-shadow: 0 2px 5px rgba(64, 58, 42, 0.22);
+    }
+    .divider {
+      height: 1px;
+      background: var(--line);
+      margin: 13px 2px;
+    }
+    .manual-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .manual-row .btn { margin: 0; }
+    .secondary {
+      border: 1px solid var(--sec-border);
+      background: var(--sec-bg);
+      color: #3A3830;
+      box-shadow: 0 1px 2px rgba(64, 58, 42, 0.05);
+    }
+    .secondary:hover {
+      background: #DFDACD;
+      box-shadow: 0 2px 4px rgba(64, 58, 42, 0.08);
+    }
+    .stop {
+      border: 1px solid var(--stop-border);
+      background: var(--stop-bg);
+      color: var(--stop-text);
+      box-shadow: 0 1px 2px rgba(120, 70, 55, 0.05);
+    }
+    .stop:hover {
+      background: #EBDCD4;
+      box-shadow: 0 2px 4px rgba(120, 70, 55, 0.08);
+    }
+    .status {
+      margin-top: 12px;
+      font-size: 11.5px;
+      line-height: 1.45;
+      white-space: pre-line;
+      color: var(--soft);
+    }
+
+    .btn:focus-visible,
+    .cselect-btn:focus-visible,
+    input:focus-visible {
+      outline: 2px solid #A89F8C;
+      outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    @media (max-width: 760px) {
+      body {
+        padding: 24px 16px;
+        align-items: flex-start;
+      }
+      .stage { gap: 24px; }
+      .note { width: 292px; padding-top: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <section class="note" aria-label="목업 설명">
+      <h1>앵챗추출기 화면 목업</h1>
+      <p class="note-desc">크롬 확장 패널의 현재 UI를 독립 HTML로 재현한 정적 목업입니다. 실제 추출 기능은 연결하지 않았고, 화면 확인용입니다.</p>
+      
+      <div class="note-meta">
+        <div class="meta-row">
+          <span class="meta-label">기준 버전</span>
+          <code>v2.13.0</code>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">릴리즈 날짜</span>
+          <code>2026. 08. 20</code>
+        </div>
+      </div>
+    </section>
+
+    <section class="mock-panel" aria-label="앵챗추출기 패널 목업">
+      <div class="header">
+        <span class="brand">
+          <span class="brand-dot" aria-hidden="true"></span>
+          <span class="brand-title">앵챗추출기</span>
+          <span class="brand-ver">v2.13.0</span>
+        </span>
+        <span class="close" title="닫기">✕</span>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <span class="row-label">파일 이름</span>
+          <input id="mock_name" type="text" value="rp_chat" />
+        </div>
+        <div class="row">
+          <span class="row-label">파일 형식</span>
+          <div id="mock_fmt_wrap" class="cselect-wrap"></div>
+        </div>
+        <div class="row">
+          <span class="row-label">분할 기준</span>
+          <div id="mock_unit_wrap" class="cselect-wrap"></div>
+        </div>
+        <div class="row" id="mock_numrow">
+          <span class="row-label"></span>
+          <input id="mock_num" type="number" min="1" value="600000" />
+          <span id="mock_suffix" class="suffix">자마다</span>
+        </div>
+        <label class="check">
+          <input id="mock_expand" type="checkbox" checked />
+          <span>접힌 토글까지 모두 펼쳐 추출</span>
+        </label>
+        <div class="speed-divider"></div>
+        <div class="speed">
+          <div class="speed-name">추출 속도</div>
+          <input id="mock_speed" type="range" min="0" max="4" step="1" value="2" />
+          <div class="speed-scale">
+            <span>느림·안전</span>
+            <span id="mock_spdlbl" class="speed-val">보통</span>
+            <span>빠름</span>
+          </div>
+        </div>
+      </div>
+
+      <button id="mock_auto" class="btn auto">자동 추출</button>
+      <div class="divider"></div>
+      <div class="manual-row">
+        <button id="mock_load" class="btn secondary">① 전체 로딩</button>
+        <button id="mock_ext" class="btn secondary">② 추출·저장</button>
+      </div>
+      <button id="mock_stop" class="btn stop">정지</button>
+
+      <div id="mock_status" class="status">• '자동 추출'을 누르면 한 번에 끝
+• 수동은 ① 전체 로딩 후 ② 추출·저장</div>
+    </section>
+  </main>
+
+  <script>
+    // ── 인터랙티브 목업 스크립트 ──
+    const checkSvg = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5L4.8 8.8L9.5 3.5" stroke="#44413A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const arrowSvg = '<svg class="cselect-arr" width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+    function createCustomSelect(wrapEl, options, defaultValue, onChange) {
+      let currentVal = defaultValue;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "cselect-btn";
+
+      const labelSpan = document.createElement("span");
+      labelSpan.className = "cselect-val";
+      const defaultOpt = options.find((o) => o.value === defaultValue) || options[0];
+      labelSpan.textContent = defaultOpt ? defaultOpt.label : "";
+
+      btn.appendChild(labelSpan);
+      btn.insertAdjacentHTML("beforeend", arrowSvg);
+
+      const menu = document.createElement("div");
+      menu.className = "cselect-menu";
+
+      function renderOptions() {
+        menu.innerHTML = "";
+        options.forEach((opt) => {
+          const item = document.createElement("div");
+          item.className = "cselect-opt" + (opt.value === currentVal ? " selected" : "");
+          item.textContent = opt.label;
+          if (opt.value === currentVal) {
+            item.insertAdjacentHTML("beforeend", checkSvg);
+          }
+          item.onclick = (e) => {
+            e.stopPropagation();
+            setVal(opt.value);
+            close();
+          };
+          menu.appendChild(item);
+        });
+      }
+
+      function open() {
+        document.querySelectorAll(".cselect-wrap.open").forEach((el) => {
+          if (el !== wrapEl) el.classList.remove("open");
+        });
+        wrapEl.classList.add("open");
+      }
+      function close() {
+        wrapEl.classList.remove("open");
+      }
+      function toggle() {
+        if (wrapEl.classList.contains("open")) close();
+        else open();
+      }
+
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        toggle();
+      };
+
+      function setVal(v) {
+        currentVal = v;
+        const found = options.find((o) => o.value === v);
+        if (found) labelSpan.textContent = found.label;
+        renderOptions();
+        if (typeof onChange === "function") onChange(v);
+      }
+
+      renderOptions();
+      wrapEl.appendChild(btn);
+      wrapEl.appendChild(menu);
+
+      return {
+        get value() { return currentVal; },
+        set value(v) { setVal(v); },
+        close,
+      };
+    }
+
+    document.addEventListener("click", (e) => {
+      document.querySelectorAll(".cselect-wrap.open").forEach((el) => {
+        if (!el.contains(e.target)) el.classList.remove("open");
+      });
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        document.querySelectorAll(".cselect-wrap.open").forEach((el) => el.classList.remove("open"));
+      }
+    });
+
+    const selFmt = createCustomSelect(
+      document.getElementById("mock_fmt_wrap"),
+      [
+        { value: "txt", label: "텍스트 (.txt)" },
+        { value: "md", label: "마크다운 (.md)" },
+        { value: "html", label: "HTML (.html)" },
+        { value: "pdf", label: "PDF (.pdf · 인쇄→PDF)" },
+      ],
+      "txt"
+    );
+
+    const numRow = document.getElementById("mock_numrow");
+    const numInput = document.getElementById("mock_num");
+    const suffix = document.getElementById("mock_suffix");
+
+    const selUnit = createCustomSelect(
+      document.getElementById("mock_unit_wrap"),
+      [
+        { value: "none", label: "분할 안 함" },
+        { value: "chars", label: "글자 수마다" },
+        { value: "count", label: "메시지 개수마다" },
+      ],
+      "chars",
+      (v) => {
+        numRow.style.display = v === "none" ? "none" : "flex";
+        suffix.textContent = v === "count" ? "개마다" : "자마다";
+        const n = parseInt(numInput.value, 10);
+        if (v === "count" && (!n || n > 5000)) numInput.value = "50";
+        if (v === "chars" && (!n || n < 1000)) numInput.value = "600000";
+      }
+    );
+
+    const SPEED_LEVELS = [
+      { name: "매우 느림", mult: 2 },
+      { name: "느림", mult: 1.4 },
+      { name: "보통", mult: 1 },
+      { name: "빠름", mult: 0.7 },
+      { name: "매우 빠름", mult: 0.45 },
+    ];
+    const spInput = document.getElementById("mock_speed");
+    const spLbl = document.getElementById("mock_spdlbl");
+    spInput.oninput = () => {
+      const lv = SPEED_LEVELS[parseInt(spInput.value, 10)] || SPEED_LEVELS[2];
+      spLbl.textContent = lv.name;
+    };
+
+    const statusEl = document.getElementById("mock_status");
+    const mockPanel = document.querySelector(".mock-panel");
+    document.querySelector(".close").onclick = () => {
+      mockPanel.style.transition = "opacity 150ms cubic-bezier(0.23, 1, 0.32, 1), transform 150ms cubic-bezier(0.23, 1, 0.32, 1)";
+      mockPanel.style.opacity = "0";
+      mockPanel.style.transform = "scale(0.97) translateY(6px)";
+      setTimeout(() => { mockPanel.style.display = "none"; }, 150);
+    };
+    document.getElementById("mock_auto").onclick = () => {
+      statusEl.textContent = "✓ 자동 추출 시뮬레이션 동작 중...\n• 1단계: 전체 메시지 로딩 완료\n• 2단계: 48개 블록 텍스트 추출 완료\n• 다운로드 창 생성됨.";
+    };
+    document.getElementById("mock_load").onclick = () => {
+      statusEl.textContent = "로딩 중… 12회 · 높이 14820 · 메시지 56 (안정 8/8)";
+    };
+    document.getElementById("mock_ext").onclick = () => {
+      statusEl.textContent = "✓ 저장 완료 · 56블록 · 1파일(.txt) · 약 48,200자";
+    };
+    document.getElementById("mock_stop").onclick = () => {
+      statusEl.textContent = "정지 요청… 다운로드 준비 완료";
+    };
+  </script>
+</body>
+</html>

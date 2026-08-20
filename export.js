@@ -1,4 +1,3 @@
-import os
 (() => {
   const ID = "__rp_panel";
   if (document.getElementById(ID)) {

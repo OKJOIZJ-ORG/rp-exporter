@@ -8,9 +8,9 @@
     return;
   }
 
-  // ══ 자동 모드 설정 (키우면 더 보수적) ══
-  const AUTO_STABLE = 8;   // 높이/메시지가 이 횟수 연속 안 늘어야 “최상단” 판정
-  const DWELL = 700;       // 끝에 핀 후 로딩 대기(ms)
+  // ══ 자동 모드 설정 (가상 스크롤 / 인피니트 로딩 최적화) ══
+  const AUTO_STABLE = 12;  // 높이/메시지/상단텍스트가 12회 연속 불변이어야 최상단 판정 (~10초 대기)
+  const DWELL = 600;       // 상단 고정 후 네트워크 응답 대기(ms)
   const OSC = 2;           // 한 사이클당 진동 횟수
   let SPEED_MULT = 1;      // 추출 속도 배수(작을수록 빠름) · 슬라이더로 실시간 조절
   const DEFAULT_NAME = "rp_chat";
@@ -21,66 +21,191 @@
   const NBSP = String.fromCharCode(160);
   const SEP = "\n\n────────────────────────\n\n";
 
-  // ── 스크롤러 / 리스트 ──
+  // ── 가상 스크롤(content-visibility: auto) 강제 렌더링 오버라이드 ──
+  // Chromium에서 content-visibility: auto가 걸린 비가시 턴의 innerText 유실 방지
+  let forceRenderStyle = null;
+  function enableForceRender() {
+    if (forceRenderStyle && document.contains(forceRenderStyle)) return;
+    forceRenderStyle = document.createElement("style");
+    forceRenderStyle.id = "__rp_force_render";
+    forceRenderStyle.textContent = `
+      [data-turn-key], [data-message-id], details, .chat-viewer-scrollbar-autohide *,
+      [data-capture-selectable] *, main * {
+        content-visibility: visible !important;
+        contain-intrinsic-size: auto none !important;
+        contain: none !important;
+      }
+    `;
+    document.documentElement.appendChild(forceRenderStyle);
+  }
+  function disableForceRender() {
+    if (forceRenderStyle && document.contains(forceRenderStyle)) {
+      forceRenderStyle.remove();
+      forceRenderStyle = null;
+    }
+  }
+
+  // ── 스크롤러 / 리스트 탐색 엔진 ──
   function findScroller() {
+    // 1순위: 알려진 플랫폼 고유 채팅 뷰어 컨테이너
+    const explicit = document.querySelector("[data-capture-selectable], .chat-viewer-scrollbar-autohide, main [class*='overflow-y-auto'], [role='log'], [aria-label*='채팅'], [aria-label*='chat']");
+    if (explicit) {
+      const s = getComputedStyle(explicit);
+      if (/(auto|scroll)/.test(s.overflowY) && explicit.scrollHeight > explicit.clientHeight + 50) {
+        return explicit;
+      }
+    }
+
+    // 2순위: 전체 요소 중 스크롤 가능하고 턴/메시지 마커를 포함하는 컨테이너
     const all = [...document.querySelectorAll("*")].filter((el) => {
+      if (el.id === ID || el.closest("#" + ID)) return false;
       const s = getComputedStyle(el);
-      return /(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 200;
+      return /(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 80;
     });
+
+    const withTurns = all.filter((el) => {
+      return el.querySelector("[data-turn-key], [data-message-id], details, [data-capture-speaker], [class*='chat-item'], [class*='message']");
+    });
+    if (withTurns.length > 0) {
+      return withTurns.sort((a, b) => b.scrollHeight - a.scrollHeight)[0];
+    }
+
+    // 3순위: flex-col-reverse (역방향 스크롤)
     const rev = all.find((el) => {
       const fd = getComputedStyle(el).flexDirection;
       return fd === "column-reverse" || /flex-col-reverse/.test(el.className || "");
     });
     if (rev) return rev;
-    return all.sort((a, b) => b.scrollHeight - a.scrollHeight)[0] || document.scrollingElement;
+
+    return all.sort((a, b) => b.scrollHeight - a.scrollHeight)[0] || document.scrollingElement || document.documentElement;
   }
+
   function scoreOf(el) {
     let n = 0;
     for (const c of el.children) {
-      if (c.querySelector("details") || (c.innerText || "").trim().length > 50) n++;
+      if (c.getAttribute("aria-hidden") === "true" || c.id === ID || c.closest("#" + ID)) continue;
+      if (c.matches("[data-turn-key], [data-message-id], details, [class*='message'], [class*='turn']") ||
+          c.querySelector("[data-turn-key], [data-message-id], details") ||
+          (c.innerText || "").trim().length > 20) {
+        n++;
+      }
     }
     return n;
   }
+
   function findList(root) {
+    if (!root) return document.body;
     let best = root, score = scoreOf(root);
-    root.querySelectorAll("*").forEach((el) => { const sc = scoreOf(el); if (sc > score) { score = sc; best = el; } });
+    root.querySelectorAll("*").forEach((el) => {
+      if (el.id === ID || el.closest("#" + ID)) return;
+      const sc = scoreOf(el);
+      if (sc > score) { score = sc; best = el; }
+    });
     return best;
   }
+
   let scroller = findScroller();
   function ensureScroller() {
     if (!scroller || !document.contains(scroller)) scroller = findScroller();
     return scroller;
   }
 
-  // ── 캡처 ──
-  let seen = new Set(), blocks = [];
-  function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0; return h + ":" + s.length; }
-  const stripNbsp = (t) => t.split(NBSP).join(" ");
-  function captureVisible() {
+  // ── 플랫폼 범용 턴 인식 ──
+  function getRecognizedTurns() {
     ensureScroller();
-    const open = expandChk.checked;
-    try { document.querySelectorAll("details").forEach((d) => (d.open = open)); } catch (e) {} // 체크면 펼쳐서 본문 포함, 해제면 접어서 요약만
+    const scope = scroller || document;
+
+    // 1. TeapotChat 등: data-turn-key
+    const turnKeys = [...scope.querySelectorAll("[data-turn-key]")].filter((el) => !el.closest("#" + ID));
+    if (turnKeys.length > 0) return turnKeys;
+
+    // 2. Caveduck 등: details
+    const details = [...scope.querySelectorAll("details")].filter((el) => !el.closest("#" + ID));
+    if (details.length > 0) return details;
+
+    // 3. data-message-id
+    const msgIds = [...scope.querySelectorAll("[data-message-id]")].filter((el) => !el.closest("#" + ID));
+    if (msgIds.length > 0) return msgIds;
+
+    // 4. list 컨테이너의 직계 자식들
     const list = findList(scroller);
-    if (!list) return;
-    for (const c of list.children) {
+    if (list && list.children.length > 0) {
+      return [...list.children].filter((c) => {
+        if (c.id === ID || c.closest("#" + ID) || c.getAttribute("aria-hidden") === "true") return false;
+        return (c.innerText || "").trim().length > 0;
+      });
+    }
+    return [];
+  }
+
+  // ── 대화 상태 시그니처 (새 턴 유입 감지) ──
+  function getChatSignature() {
+    ensureScroller();
+    const turns = getRecognizedTurns();
+    const count = turns.length;
+    const sh = Math.round(scroller.scrollHeight || 0);
+    const topTurn = turns[0];
+    const botTurn = turns[turns.length - 1];
+    const topText = topTurn ? (topTurn.innerText || "").trim().slice(0, 40) : "";
+    const botText = botTurn ? (botTurn.innerText || "").trim().slice(0, 40) : "";
+    return {
+      count,
+      sh,
+      topText,
+      botText,
+      key: count + "|" + sh + "|" + topText + "|" + botText,
+    };
+  }
+
+  // ── 캡처 및 중복 제거 ──
+  let seen = new Set(), blocks = [];
+  function hash(s) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
+    return h + ":" + s.length;
+  }
+  const stripNbsp = (t) => t.split(NBSP).join(" ");
+
+  function captureElements(elements) {
+    const open = expandChk.checked;
+    try { document.querySelectorAll("details").forEach((d) => (d.open = open)); } catch (e) {}
+
+    for (const el of elements) {
+      if (!el || el.getAttribute("aria-hidden") === "true" || el.id === ID || el.closest("#" + ID)) continue;
       let t = "";
-      try { t = stripNbsp(c.innerText || "").trim(); } catch (e) { continue; }
+      try { t = stripNbsp(el.innerText || "").trim(); } catch (e) { continue; }
       if (t.length < 2) continue;
       const k = hash(t);
-      if (!seen.has(k)) { seen.add(k); blocks.push(t); }
+      if (!seen.has(k)) {
+        seen.add(k);
+        blocks.push(t);
+      }
     }
+  }
+
+  function captureVisible() {
+    ensureScroller();
+    const turns = getRecognizedTurns();
+    if (turns.length > 0) {
+      captureElements(turns);
+      return;
+    }
+    const list = findList(scroller);
+    if (!list) return;
+    captureElements([...list.children]);
   }
 
   // ── 적응형 대기 ──
   async function settle(maxMs) {
     const cap = Math.round(maxMs * SPEED_MULT);
-    const t0 = performance.now(); let lastLen = -1, stable = 0;
+    const t0 = performance.now();
+    let lastLen = -1, stable = 0;
     while (performance.now() - t0 < cap) {
       await raf();
       if (stopFlag) break;
       ensureScroller();
       let len = 0;
-      try { len = scroller.innerText.length; } catch (e) { break; }
+      try { len = (scroller.innerText || "").length; } catch (e) { break; }
       if (len === lastLen) stable++; else stable = 0;
       lastLen = len;
       if (stable >= 2) break;
@@ -89,63 +214,116 @@
 
   let busy = false, stopFlag = false;
 
-  // ── 강한 진동: 끝 → 뷰포트 한 칸 아래 → 다시 끝 (OSC회 반복) ──
-  async function oscillate() {
+  // ── 최상단 핀 & 진동: IntersectionObserver / 스크롤 이벤트 자극 ──
+  async function oscillateTop() {
     ensureScroller();
-    const ch = scroller.clientHeight || 500;
+    const isRev = getComputedStyle(scroller).flexDirection === "column-reverse" || /flex-col-reverse/.test(scroller.className || "");
+    const topVal = isRev ? -1e9 : 0;
+    const offsetVal = isRev ? 120 : Math.min(100, Math.max(30, Math.round(scroller.clientHeight * 0.15)));
+
     for (let k = 0; k < OSC; k++) {
-      scroller.scrollTop = -1e9;            // 가장 오래된 쪽 극단
+      scroller.scrollTop = topVal;
+      try { scroller.dispatchEvent(new Event("scroll", { bubbles: true })); } catch (e) {}
       await sleep(Math.round(DWELL * SPEED_MULT));
       if (stopFlag) return;
-      scroller.scrollTop = scroller.scrollTop + ch; // 한 칸 아래로 크게
-      await sleep(Math.round(220 * SPEED_MULT));
+
+      scroller.scrollTop = isRev ? (topVal + offsetVal) : offsetVal;
+      try { scroller.dispatchEvent(new Event("scroll", { bubbles: true })); } catch (e) {}
+      await sleep(Math.round(180 * SPEED_MULT));
     }
-    scroller.scrollTop = -1e9;
-    await sleep(Math.round(260 * SPEED_MULT));
+    scroller.scrollTop = topVal;
+    try { scroller.dispatchEvent(new Event("scroll", { bubbles: true })); } catch (e) {}
+    await sleep(Math.round(220 * SPEED_MULT));
   }
 
   // ── ①/▶ 전체 로딩 (auto=false: ■ 정지까지 / auto=true: 자동 판정 종료) ──
   async function preload(auto) {
-    let i = 0; const MAX = 50000;
-    let last = "", stable = 0;
+    enableForceRender();
+    let i = 0;
+    const MAX = 50000;
+    let lastKey = "", stable = 0;
+
     while (!stopFlag && i < MAX) {
       i++;
-      await oscillate();
+      await oscillateTop();
       if (stopFlag) break;
-      const sh = Math.round(scroller.scrollHeight);
-      const d = document.querySelectorAll("details").length;
-      const list = findList(scroller);
-      const f = list.firstElementChild;
-      const m = sh + "|" + d + "|" + (f ? f.innerText.slice(0, 60) : "");
+
+      const sig = getChatSignature();
       if (auto) {
-        if (m === last) stable++; else { stable = 0; last = m; }
-        setStatus("자동 로딩… " + i + "회 · 높이 " + sh + " · 메시지 " + d + " (안정 " + stable + "/" + AUTO_STABLE + ")");
+        if (sig.key === lastKey) {
+          stable++;
+        } else {
+          stable = 0;
+          lastKey = sig.key;
+        }
+        setStatus("자동 로딩… " + i + "회 · " + sig.count + "개 턴 로드됨 (안정 " + stable + "/" + AUTO_STABLE + ")");
         if (stable >= AUTO_STABLE) break;
       } else {
-        setStatus("로딩 중… " + i + "회 · 높이 " + sh + " · 메시지 " + d + "  (충분하면 ■ 정지)");
+        setStatus("로딩 중… " + i + "회 · " + sig.count + "개 턴 감지 (충분하면 ■ 정지)");
       }
     }
-    if (!auto) setStatus("로딩 정지 · 메시지 " + document.querySelectorAll("details").length + ". ②로 추출하세요.");
+
+    if (!auto) {
+      const finalSig = getChatSignature();
+      setStatus("로딩 정지 · " + finalSig.count + "개 턴 감지됨. ②로 추출하세요.");
+    }
   }
 
-  // ── 수집 스윗 ──
+  // ── 전 턴 무손실 스윗 캡처 ──
   async function sweepCapture() {
-    scroller = findScroller();
-    scroller.scrollTop = -1e9; await sleep(120); const a1 = scroller.scrollTop;
-    scroller.scrollTop = 1e9; await sleep(120); const a2 = scroller.scrollTop;
-    const min = Math.min(a1, a2), max = Math.max(a1, a2);
-    const ch = scroller.clientHeight || 500; const step = Math.max(ch * 0.8, 300);
-    seen = new Set(); blocks = [];
-    let pos = min; scroller.scrollTop = min; await settle(350); captureVisible();
-    let s = 0;
-    while (pos < max - 2 && s < 8000 && !stopFlag) {
-      s++; pos = Math.min(pos + step, max); scroller.scrollTop = pos; await settle(350); captureVisible();
-      const pct = Math.round(((pos - min) / ((max - min) || 1)) * 100);
-      setStatus("수집 " + pct + "% · " + blocks.length + "블록");
+    enableForceRender();
+    ensureScroller();
+    seen = new Set();
+    blocks = [];
+
+    // 시작 메시지(Intro / Start Setting)가 스크롤러 상단 별도 블록에 있는 경우 선행 수집
+    const introEl = scroller.querySelector(".pt-4, [class*='start-message'], [data-start-message]");
+    if (introEl && !introEl.matches("[data-turn-key]") && !introEl.querySelector("[data-turn-key]")) {
+      const introText = stripNbsp(introEl.innerText || "").trim();
+      if (introText.length > 5) {
+        seen.add(hash(introText));
+        blocks.push(introText);
+      }
     }
-    scroller.scrollTop = max; await settle(350); captureVisible();
+
+    // 1차: DOM에 존재하는 모든 턴 일괄 수집
+    const directTurns = getRecognizedTurns();
+    if (directTurns.length > 0) {
+      captureElements(directTurns);
+    }
+
+    // 2차: 상단부터 하단까지 순차 스크롤 스윗하며 동적 렌더링/누락분 보충
+    const isRev = getComputedStyle(scroller).flexDirection === "column-reverse" || /flex-col-reverse/.test(scroller.className || "");
+    const min = isRev ? -1e9 : 0;
+    const max = Math.max(scroller.scrollHeight - scroller.clientHeight, 1);
+    const ch = scroller.clientHeight || 500;
+    const step = Math.max(Math.round(ch * 0.7), 250);
+
+    let pos = 0;
     scroller.scrollTop = 0;
-    setStatus("수집 완료 · " + blocks.length + "블록. 저장 중…");
+    await settle(200);
+    captureVisible();
+
+    let s = 0;
+    while (pos < max - 2 && s < 10000 && !stopFlag) {
+      s++;
+      pos = Math.min(pos + step, max);
+      scroller.scrollTop = pos;
+      try { scroller.dispatchEvent(new Event("scroll", { bubbles: true })); } catch (e) {}
+      await settle(200);
+      captureVisible();
+      const pct = Math.round((pos / max) * 100);
+      setStatus("수집 " + pct + "% · " + blocks.length + "개 턴 확보");
+    }
+
+    scroller.scrollTop = max;
+    await settle(200);
+    captureVisible();
+
+    // 완료 후 원위치 및 스타일 정리
+    scroller.scrollTop = max;
+    disableForceRender();
+    setStatus("수집 완료 · " + blocks.length + "개 턴 추출됨. 저장 중…");
   }
 
   // ── ZIP(무압축 store) 생성 ──
@@ -259,7 +437,7 @@
     const chars = blocks.reduce((s, b) => s + b.length, 0);
     if (fmt === "pdf") {
       printPdf(groups, base);
-      setStatus("✓ 인쇄 창 열림 · 대상에서 'PDF로 저장' 선택 · " + blocks.length + "블록" + (groups.length > 1 ? " · " + groups.length + "구간(페이지 분리)" : ""));
+      setStatus("✓ 인쇄 창 열림 · 대상에서 'PDF로 저장' 선택 · " + blocks.length + "개 턴" + (groups.length > 1 ? " · " + groups.length + "구간(페이지 분리)" : ""));
       nameInput.value = DEFAULT_NAME;
       return;
     }
@@ -268,7 +446,7 @@
     const make = (g) => fmt === "html" ? htmlDoc(g.join(SEP), base) : g.join(SEP);
     if (groups.length === 1) {
       dlBlob(base + "." + ext, new Blob([make(groups[0])], { type: mime }));
-      setStatus("✓ 저장 완료 · " + blocks.length + "블록 · 1파일(." + ext + ") · 약 " + chars.toLocaleString() + "자");
+      setStatus("✓ 저장 완료 · " + blocks.length + "개 턴 · 1파일(." + ext + ") · 약 " + chars.toLocaleString() + "자");
     } else {
       const enc = new TextEncoder();
       const files = groups.map((g, i) => ({
@@ -277,7 +455,7 @@
       }));
       const zip = makeZip(files);
       dlBlob(base + ".zip", new Blob([zip], { type: "application/zip" }));
-      setStatus("✓ 저장 완료 · " + blocks.length + "블록 · " + groups.length + "파일(ZIP·." + ext + ") · 약 " + chars.toLocaleString() + "자");
+      setStatus("✓ 저장 완료 · " + blocks.length + "개 턴 · " + groups.length + "파일(ZIP·." + ext + ") · 약 " + chars.toLocaleString() + "자");
     }
     nameInput.value = DEFAULT_NAME; // 다운로드 시작 후 파일명 리셋
   }
@@ -286,8 +464,16 @@
   async function run(fn) {
     if (busy) return;
     busy = true; stopFlag = false; setButtons(true);
-    try { await fn(); } catch (e) { setStatus("⚠ 오류: " + ((e && e.message) || String(e))); console.error("[앵챗추출기]", e); }
-    busy = false; setButtons(false);
+    try {
+      await fn();
+    } catch (e) {
+      setStatus("⚠ 오류: " + ((e && e.message) || String(e)));
+      console.error("[앵챗추출기]", e);
+    } finally {
+      disableForceRender();
+      busy = false;
+      setButtons(false);
+    }
   }
 
   // ── 패널 UI (Cloud Dancer 톤 & Emil Kowalski 인터랙션 가이드) ──
@@ -767,4 +953,3 @@
 
   setStatus("• '자동 추출'을 누르면 한 번에 끝\n• 수동은 ① 전체 로딩 후 ② 추출·저장");
 })();
-

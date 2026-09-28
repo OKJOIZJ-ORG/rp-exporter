@@ -20,10 +20,10 @@
 
 ## 설치
 
-1. `rp-exporter (Public).zip`을 압축 해제합니다.
+1. `rp-exporter.Public.zip`을 압축 해제합니다.
 2. Chrome에서 `chrome://extensions`를 엽니다.
 3. 개발자 모드를 켭니다.
-4. `압축해제된 확장 프로그램을 로드합니다`에서 `manifest.json`이 있는 `rp-exporter (Public)` 폴더를 선택합니다.
+4. `압축해제된 확장 프로그램을 로드합니다`에서 압축을 푼 폴더 중 `manifest.json`이 있는 폴더를 선택합니다.
 
 ## AI 첨부용 파일 분할
 

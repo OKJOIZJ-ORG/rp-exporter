@@ -1,11 +1,13 @@
 (() => {
   const ID = "__rp_panel";
-  if (document.getElementById(ID)) {
-    const existing = document.getElementById(ID);
+  const existing = document.getElementById(ID);
+  if (existing) {
     if (existing.__rp_closeTimer) { clearTimeout(existing.__rp_closeTimer); existing.__rp_closeTimer = null; }
-    existing.classList.remove("__rp_closing");
-    existing.style.display = "block";
-    return;
+    existing.remove();
+  }
+  const existingStyle = document.getElementById("__rp_style");
+  if (existingStyle) {
+    existingStyle.remove();
   }
 
   // ══ 자동 모드 설정 (키우면 더 보수적) ══
@@ -538,6 +540,8 @@
     setTimeout(() => { try { ifr.contentWindow.focus(); ifr.contentWindow.print(); } catch (e) { setStatus("인쇄 창을 열지 못했습니다\n" + (e && e.message)); } }, 500);
     return true;
   }
+
+
   function saveAll() {
     if (!blocks.length) { setStatus("저장할 대화를 찾지 못했습니다.", ["① 전체 로딩", "② 추출·저장"]); return; }
     const unit = selUnit.value;
@@ -558,9 +562,12 @@
     const ext = fmt === "md" ? "md" : fmt === "html" ? "html" : "txt";
     const mime = fmt === "md" ? "text/markdown;charset=utf-8" : fmt === "html" ? "text/html;charset=utf-8" : "text/plain;charset=utf-8";
     const make = (g) => fmt === "html" ? htmlDoc(g.join(SEP), base) : g.join(SEP);
+
+    let exportFileName, exportBlob, fileDesc;
     if (groups.length === 1) {
-      dlBlob(base + "." + ext, new Blob([make(groups[0])], { type: mime }));
-      setStatus("저장 완료\n대화 " + blocks.length.toLocaleString() + "개 · 1파일(." + ext + ")\n약 " + chars.toLocaleString() + "자");
+      exportFileName = base + "." + ext;
+      exportBlob = new Blob([make(groups[0])], { type: mime });
+      fileDesc = "1파일(." + ext + ")";
     } else {
       const enc = new TextEncoder();
       const files = groups.map((g, i) => ({
@@ -568,9 +575,16 @@
         data: enc.encode(make(g)),
       }));
       const zip = makeZip(files);
-      dlBlob(base + ".zip", new Blob([zip], { type: "application/zip" }));
-      setStatus("저장 완료\n대화 " + blocks.length.toLocaleString() + "개 · " + groups.length.toLocaleString() + "파일(ZIP · ." + ext + ")\n약 " + chars.toLocaleString() + "자");
+      exportFileName = base + ".zip";
+      exportBlob = new Blob([zip], { type: "application/zip" });
+      fileDesc = groups.length.toLocaleString() + "파일(ZIP · ." + ext + ")";
     }
+
+    // 로컬 다운로드 실행 (로컬 저장은 항상 보장)
+    dlBlob(exportFileName, exportBlob);
+
+
+    setStatus("저장 완료\n대화 " + blocks.length.toLocaleString() + "개 · " + fileDesc + "\n약 " + chars.toLocaleString() + "자");
     nameInput.value = DEFAULT_NAME; // 다운로드 시작 후 파일명 리셋
   }
 
@@ -612,6 +626,7 @@
 
   // 호스트 페이지 간섭 방지 및 고품질 애니메이션 스타일시트
   const st = document.createElement("style");
+  st.id = "__rp_style";
   st.textContent = `
     @keyframes __rp_fadeIn {
       from { opacity: 0; }
@@ -1270,8 +1285,9 @@
     panel.classList.add("__rp_closing");
     panel.__rp_closeTimer = setTimeout(() => {
       panel.__rp_closeTimer = null;
-      panel.classList.remove("__rp_closing");
-      panel.style.display = "none";
+      panel.remove();
+      const s = document.getElementById("__rp_style");
+      if (s) s.remove();
     }, 150);
   };
   bStop.onclick = () => {

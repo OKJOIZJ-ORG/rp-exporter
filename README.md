@@ -2,7 +2,6 @@
 
 현재 탭의 채팅 화면을 스크롤하며 불러온 텍스트를 수집해 저장하도록 구현된 Chrome Manifest V3 확장 프로그램입니다.
 
-배포 `rp-exporter.zip`: `46,873 bytes` · SHA-256 `BC3A44E15B13F1FE7A537213D8C7CEDD2581AAAF7E16BCBB5B386DE0A415E131`
 
 ## 구현된 기능
 
@@ -21,10 +20,10 @@
 
 ## 설치
 
-1. `rp-exporter.zip`을 압축 해제합니다.
+1. `rp-exporter (Public).zip`을 압축 해제합니다.
 2. Chrome에서 `chrome://extensions`를 엽니다.
 3. 개발자 모드를 켭니다.
-4. `압축해제된 확장 프로그램을 로드합니다`에서 `manifest.json`이 있는 `rp-exporter` 폴더를 선택합니다.
+4. `압축해제된 확장 프로그램을 로드합니다`에서 `manifest.json`이 있는 `rp-exporter (Public)` 폴더를 선택합니다.
 
 ## AI 첨부용 파일 분할
 

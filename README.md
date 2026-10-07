@@ -20,7 +20,7 @@
 
 ## v2.11.9 변경 내역 — 2026.10.08
 
-- Notion의 확장 설치 파일과 Tampermonkey 설치 파일을 웹훅 전송 기능이 없는 Public 배포본으로 통일했습니다.
+- Notion의 확장 설치 파일과 Tampermonkey 설치 파일을 웹훅 전송 기능이 없는 배포본으로 통일했습니다.
 
 ## v2.11.8 변경 내역 — 2026.10.03
 
@@ -52,9 +52,9 @@
 
 ## 설치 — PC Chrome
 
-[최신 공개 ZIP 다운로드](https://raw.githubusercontent.com/OKJOIZJ-ORG/rp-exporter/main/rp-exporter.Public.zip)를 눌러 파일을 받습니다.
+[최신 공개 ZIP 다운로드](https://raw.githubusercontent.com/OKJOIZJ-ORG/rp-exporter/main/rp-exporter.zip)를 눌러 파일을 받습니다.
 
-1. `rp-exporter.Public.zip`을 압축 해제합니다.
+1. `rp-exporter.zip`을 압축 해제합니다.
 2. Chrome에서 `chrome://extensions`를 엽니다.
 3. 개발자 모드를 켭니다.
 4. `압축해제된 확장 프로그램을 로드합니다`에서 압축을 푼 폴더 중 `manifest.json`이 있는 폴더를 선택합니다.
